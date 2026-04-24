@@ -100,6 +100,8 @@ Role = 0
 mesh = SubResource("CapsuleMesh_fd0wr")
 material_override = SubResource("Material_lancer")
 
+[node name="Units" type="Node3D" parent="Squads/LancerSquad"]
+
 [node name="FacingMarker" type="MeshInstance3D" parent="Squads/LancerSquad"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.05)
 mesh = SubResource("BoxMesh_arrow")
@@ -127,6 +129,8 @@ MoveSpeed = 7.0
 mesh = SubResource("CapsuleMesh_fd0wr")
 material_override = SubResource("Material_archer")
 scale = Vector3(0.85, 0.85, 0.85)
+
+[node name="Units" type="Node3D" parent="Squads/ArcherSquad"]
 
 [node name="FacingMarker" type="MeshInstance3D" parent="Squads/ArcherSquad"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.05)

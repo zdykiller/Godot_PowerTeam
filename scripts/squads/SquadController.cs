@@ -74,8 +74,19 @@ public partial class SquadController : Node3D
     [Export]
     public int VolleyTargetLimit = 2;
 
+    [Export]
+    public int LancerUnitCount = 6;
+
+    [Export]
+    public int ArcherUnitCount = 5;
+
+    [Export]
+    public float FormationLerp = 8.0f;
+
     private Label3D _stateLabel;
     private MeshInstance3D _bodyMesh;
+    private Node3D _unitsRoot;
+    private readonly System.Collections.Generic.List<Node3D> _unitNodes = [];
     private Vector3 _velocity = Vector3.Zero;
     private float _chargePower;
     private float _aimFocus;
@@ -94,6 +105,8 @@ public partial class SquadController : Node3D
     {
         _stateLabel = GetNodeOrNull<Label3D>("StateLabel");
         _bodyMesh = GetNodeOrNull<MeshInstance3D>("Body");
+        _unitsRoot = GetNodeOrNull<Node3D>("Units");
+        BuildVisualUnits();
         _volleyCooldown = VolleyInterval;
         UpdateLabel();
     }
@@ -109,6 +122,8 @@ public partial class SquadController : Node3D
         {
             _bodyMesh.Scale = Vector3.One * (1.0f + _flashTimer * 0.25f + (IsSelected ? 0.08f : 0.0f));
         }
+
+        UpdateFormation((float)delta);
     }
 
     public void SetSelected(bool selected)
@@ -252,6 +267,68 @@ public partial class SquadController : Node3D
     private Vector3 ToWorld(Vector2 command)
     {
         return new Vector3(command.X, 0.0f, command.Y);
+    }
+
+    private void BuildVisualUnits()
+    {
+        if (_unitsRoot == null || _bodyMesh?.Mesh == null)
+        {
+            return;
+        }
+
+        _bodyMesh.Visible = false;
+        var material = _bodyMesh.MaterialOverride;
+        var count = Role == SquadRole.Lancer ? LancerUnitCount : ArcherUnitCount;
+
+        for (var i = 0; i < count; i++)
+        {
+            var unit = new MeshInstance3D
+            {
+                Name = $"Unit{i + 1}",
+                Mesh = _bodyMesh.Mesh,
+                MaterialOverride = material,
+                Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.36f),
+            };
+            unit.Position = GetFormationSlot(i, 0.0f);
+            _unitsRoot.AddChild(unit);
+            _unitNodes.Add(unit);
+        }
+    }
+
+    private void UpdateFormation(float delta)
+    {
+        if (_unitNodes.Count == 0)
+        {
+            return;
+        }
+
+        var intensity = Role == SquadRole.Lancer ? _chargePower : _aimFocus;
+        for (var i = 0; i < _unitNodes.Count; i++)
+        {
+            var target = GetFormationSlot(i, intensity);
+            var unit = _unitNodes[i];
+            unit.Position = unit.Position.Lerp(target, FormationLerp * delta);
+
+            var pulse = 1.0f + _flashTimer * 0.25f + (IsSelected ? 0.08f : 0.0f);
+            unit.Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.36f) * pulse;
+        }
+    }
+
+    private Vector3 GetFormationSlot(int index, float intensity)
+    {
+        if (Role == SquadRole.Lancer)
+        {
+            var column = index % 2;
+            var row = index / 2;
+            var width = Mathf.Lerp(0.85f, 0.52f, intensity);
+            var depth = Mathf.Lerp(0.75f, 1.05f, intensity);
+            return new Vector3((column - 0.5f) * width, 0.0f, row * depth - 0.65f);
+        }
+
+        var center = (_unitNodes.Count - 1) * 0.5f;
+        var spread = Mathf.Lerp(0.55f, 0.9f, intensity);
+        var arc = Mathf.Sin((index - center) * 0.75f) * Mathf.Lerp(0.28f, 0.08f, intensity);
+        return new Vector3((index - center) * spread, 0.0f, arc);
     }
 
     private void FaceDirection(Vector3 direction, float delta)
