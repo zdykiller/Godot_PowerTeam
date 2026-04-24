@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/game/GameRoot.cs" id="1_mhnd2"]
 [ext_resource type="Script" path="res://scripts/squads/SquadController.cs" id="2_j36x3"]
 [ext_resource type="Script" path="res://scripts/input/CommandWheelControl.cs" id="3_djdo4"]
+[ext_resource type="Script" path="res://scripts/combat/TargetDummy.cs" id="4_hqf8h"]
 
 [sub_resource type="Environment" id="Environment_rac1j"]
 background_mode = 1
@@ -17,6 +18,12 @@ size = Vector2(40, 40)
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_fd0wr"]
 radius = 0.8
 mid_height = 1.8
+
+[sub_resource type="SphereMesh" id="SphereMesh_q2j5k"]
+radius = 0.9
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hv9u2"]
+albedo_color = Color(0.831373, 0.2, 0.2, 1)
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_mhnd2")
@@ -75,6 +82,38 @@ text = "Archer"
 billboard = 1
 font_size = 40
 modulate = Color(0.52549, 0.87451, 0.654902, 1)
+
+[node name="Targets" type="Node3D" parent="."]
+
+[node name="DummyA" type="Node3D" parent="Targets"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, -6)
+script = ExtResource("4_hqf8h")
+
+[node name="Body" type="MeshInstance3D" parent="Targets/DummyA"]
+mesh = SubResource("SphereMesh_q2j5k")
+material_override = SubResource("StandardMaterial3D_hv9u2")
+
+[node name="StateLabel" type="Label3D" parent="Targets/DummyA"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
+text = "DummyA"
+billboard = 1
+font_size = 32
+modulate = Color(1, 0.9, 0.3, 1)
+
+[node name="DummyB" type="Node3D" parent="Targets"]
+transform = Transform3D(0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, 4, 0.8, -6)
+script = ExtResource("4_hqf8h")
+
+[node name="Body" type="MeshInstance3D" parent="Targets/DummyB"]
+mesh = SubResource("SphereMesh_q2j5k")
+material_override = SubResource("StandardMaterial3D_hv9u2")
+
+[node name="StateLabel" type="Label3D" parent="Targets/DummyB"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
+text = "DummyB"
+billboard = 1
+font_size = 32
+modulate = Color(1, 0.9, 0.3, 1)
 
 [node name="UI" type="CanvasLayer" parent="."]
 

@@ -3,6 +3,20 @@ using System.Text;
 
 public partial class SquadController : Node3D
 {
+    public struct CombatAction
+    {
+        public bool LancerImpact;
+        public float LancerDamage;
+        public float LancerRange;
+        public float LancerArcRadians;
+
+        public bool VolleyFired;
+        public float VolleyDamage;
+        public float VolleyRange;
+        public float VolleyArcRadians;
+        public int VolleyTargetLimit;
+    }
+
     public enum SquadRole
     {
         Lancer,
@@ -31,10 +45,34 @@ public partial class SquadController : Node3D
     public float AimBuildRate = 1.2f;
 
     [Export]
+    public float LancerImpactDamage = 24.0f;
+
+    [Export]
+    public float LancerImpactRange = 2.4f;
+
+    [Export]
+    public float LancerImpactArcDegrees = 36.0f;
+
+    [Export]
+    public float LancerImpactCooldown = 1.0f;
+
+    [Export]
     public float ArcherRelocateThreshold = 0.7f;
 
     [Export]
+    public float VolleyDamage = 12.0f;
+
+    [Export]
     public float VolleyInterval = 0.9f;
+
+    [Export]
+    public float VolleyRange = 15.0f;
+
+    [Export]
+    public float VolleyArcDegrees = 20.0f;
+
+    [Export]
+    public int VolleyTargetLimit = 2;
 
     private Label3D _stateLabel;
     private MeshInstance3D _bodyMesh;
@@ -42,10 +80,15 @@ public partial class SquadController : Node3D
     private float _chargePower;
     private float _aimFocus;
     private float _volleyCooldown;
+    private float _lancerCooldown;
     private float _flashTimer;
     private string _statusText = "Idle";
 
     public bool IsSelected { get; private set; }
+    public Vector3 FacingDirection => -GlobalTransform.Basis.Z;
+    public float ChargePower => _chargePower;
+    public float AimFocus => _aimFocus;
+    public float CurrentSpeed => _velocity.Length();
 
     public override void _Ready()
     {
@@ -74,20 +117,33 @@ public partial class SquadController : Node3D
         UpdateLabel();
     }
 
-    public void Simulate(float delta, Vector2 command, bool active)
+    public CombatAction Simulate(float delta, Vector2 command, bool active)
     {
+        var action = new CombatAction
+        {
+            VolleyTargetLimit = VolleyTargetLimit,
+            LancerArcRadians = Mathf.DegToRad(LancerImpactArcDegrees),
+            VolleyArcRadians = Mathf.DegToRad(VolleyArcDegrees),
+            LancerRange = LancerImpactRange,
+            VolleyRange = VolleyRange,
+            VolleyDamage = VolleyDamage,
+            LancerDamage = LancerImpactDamage,
+        };
+
+        _lancerCooldown = Mathf.Max(0.0f, _lancerCooldown - delta);
         switch (Role)
         {
             case SquadRole.Lancer:
-                SimulateLancer(delta, command, active);
+                SimulateLancer(delta, command, active, ref action);
                 break;
             case SquadRole.Archer:
-                SimulateArcher(delta, command, active);
+                SimulateArcher(delta, command, active, ref action);
                 break;
         }
 
         GlobalPosition += _velocity * delta;
         UpdateLabel();
+        return action;
     }
 
     public string BuildStatusReport()
@@ -113,7 +169,7 @@ public partial class SquadController : Node3D
         return builder.ToString();
     }
 
-    private void SimulateLancer(float delta, Vector2 command, bool active)
+    private void SimulateLancer(float delta, Vector2 command, bool active, ref CombatAction action)
     {
         var moveIntent = active ? command : Vector2.Zero;
         var desiredVelocity = ToWorld(moveIntent) * MoveSpeed * moveIntent.Length();
@@ -128,7 +184,16 @@ public partial class SquadController : Node3D
         if (speed >= ChargeSpeedThreshold)
         {
             _chargePower = Mathf.Clamp(_chargePower + ChargeBuildRate * delta, 0.0f, 1.0f);
-            _statusText = "Charging";
+            _statusText = _chargePower >= 0.95f ? "Charging (ready)" : "Charging";
+
+            if (_chargePower >= 0.95f && _lancerCooldown <= 0.0f)
+            {
+                action.LancerImpact = true;
+                _chargePower = 0.75f;
+                _lancerCooldown = LancerImpactCooldown;
+                _flashTimer = 0.25f;
+                _statusText = "Impact!";
+            }
         }
         else if (speed > 0.5f)
         {
@@ -142,7 +207,7 @@ public partial class SquadController : Node3D
         }
     }
 
-    private void SimulateArcher(float delta, Vector2 command, bool active)
+    private void SimulateArcher(float delta, Vector2 command, bool active, ref CombatAction action)
     {
         var strength = active ? command.Length() : 0.0f;
         var direction = strength > 0.01f ? ToWorld(command).Normalized() : -Basis.Z;
@@ -170,6 +235,7 @@ public partial class SquadController : Node3D
 
             if (_volleyCooldown <= 0.0f && _aimFocus >= 0.55f)
             {
+                action.VolleyFired = true;
                 _volleyCooldown = VolleyInterval;
                 _flashTimer = 0.2f;
                 _statusText = "Volley Fired";
@@ -195,7 +261,7 @@ public partial class SquadController : Node3D
             return;
         }
 
-        var targetYaw = Mathf.Atan2(direction.X, direction.Z);
+        var targetYaw = Mathf.Atan2(direction.X, -direction.Z);
         Rotation = new Vector3(
             Rotation.X,
             Mathf.LerpAngle(Rotation.Y, targetYaw, RotationLerp * delta),
