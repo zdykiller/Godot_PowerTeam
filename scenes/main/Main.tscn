@@ -19,10 +19,31 @@ size = Vector2(40, 40)
 radius = 0.8
 mid_height = 1.8
 
+[sub_resource type="BoxMesh" id="BoxMesh_arrow"]
+size = Vector3(0.35, 0.2, 1.6)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lane"]
+size = Vector3(0.08, 0.04, 40)
+
 [sub_resource type="SphereMesh" id="SphereMesh_q2j5k"]
 radius = 0.9
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hv9u2"]
+[sub_resource type="StandardMaterial3D" id="Material_floor"]
+albedo_color = Color(0.12, 0.18, 0.14, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_lane"]
+albedo_color = Color(0.32, 0.38, 0.34, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_lancer"]
+albedo_color = Color(0.96, 0.72, 0.14, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_archer"]
+albedo_color = Color(0.1, 0.74, 0.82, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_arrow"]
+albedo_color = Color(0.96, 0.96, 0.9, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_dummy"]
 albedo_color = Color(0.831373, 0.2, 0.2, 1)
 
 [node name="Main" type="Node3D"]
@@ -48,6 +69,22 @@ size = 16.0
 
 [node name="Floor" type="MeshInstance3D" parent="Ground"]
 mesh = SubResource("PlaneMesh_7427r")
+material_override = SubResource("Material_floor")
+
+[node name="LaneX0" type="MeshInstance3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+mesh = SubResource("BoxMesh_lane")
+material_override = SubResource("Material_lane")
+
+[node name="LaneX1" type="MeshInstance3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.03, 0)
+mesh = SubResource("BoxMesh_lane")
+material_override = SubResource("Material_lane")
+
+[node name="LaneX2" type="MeshInstance3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.03, 0)
+mesh = SubResource("BoxMesh_lane")
+material_override = SubResource("Material_lane")
 
 [node name="Squads" type="Node3D" parent="."]
 
@@ -58,6 +95,12 @@ Role = 0
 
 [node name="Body" type="MeshInstance3D" parent="Squads/LancerSquad"]
 mesh = SubResource("CapsuleMesh_fd0wr")
+material_override = SubResource("Material_lancer")
+
+[node name="FacingMarker" type="MeshInstance3D" parent="Squads/LancerSquad"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.35, -1.25)
+mesh = SubResource("BoxMesh_arrow")
+material_override = SubResource("Material_arrow")
 
 [node name="StateLabel" type="Label3D" parent="Squads/LancerSquad"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
@@ -74,7 +117,13 @@ MoveSpeed = 7.0
 
 [node name="Body" type="MeshInstance3D" parent="Squads/ArcherSquad"]
 mesh = SubResource("CapsuleMesh_fd0wr")
+material_override = SubResource("Material_archer")
 scale = Vector3(0.85, 0.85, 0.85)
+
+[node name="FacingMarker" type="MeshInstance3D" parent="Squads/ArcherSquad"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.35, -1.25)
+mesh = SubResource("BoxMesh_arrow")
+material_override = SubResource("Material_arrow")
 
 [node name="StateLabel" type="Label3D" parent="Squads/ArcherSquad"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
@@ -91,7 +140,7 @@ script = ExtResource("4_hqf8h")
 
 [node name="Body" type="MeshInstance3D" parent="Targets/DummyA"]
 mesh = SubResource("SphereMesh_q2j5k")
-material_override = SubResource("StandardMaterial3D_hv9u2")
+material_override = SubResource("Material_dummy")
 
 [node name="StateLabel" type="Label3D" parent="Targets/DummyA"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
@@ -106,7 +155,7 @@ script = ExtResource("4_hqf8h")
 
 [node name="Body" type="MeshInstance3D" parent="Targets/DummyB"]
 mesh = SubResource("SphereMesh_q2j5k")
-material_override = SubResource("StandardMaterial3D_hv9u2")
+material_override = SubResource("Material_dummy")
 
 [node name="StateLabel" type="Label3D" parent="Targets/DummyB"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
