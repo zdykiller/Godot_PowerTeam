@@ -90,6 +90,7 @@ public partial class SquadController : Node3D
     private Vector3 _velocity = Vector3.Zero;
     private float _chargePower;
     private float _aimFocus;
+    private float _formationIntent;
     private float _volleyCooldown;
     private float _lancerCooldown;
     private float _flashTimer;
@@ -191,6 +192,7 @@ public partial class SquadController : Node3D
         _velocity = _velocity.MoveToward(desiredVelocity, Acceleration * delta);
 
         var speed = _velocity.Length();
+        _formationIntent = Mathf.MoveToward(_formationIntent, Mathf.Clamp(speed / MoveSpeed, 0.0f, 1.0f), delta * 4.0f);
         if (speed > 0.2f)
         {
             FaceDirection(_velocity.Normalized(), delta);
@@ -232,6 +234,7 @@ public partial class SquadController : Node3D
             var travel = Mathf.InverseLerp(ArcherRelocateThreshold, 1.0f, strength);
             var desiredVelocity = direction * MoveSpeed * 0.45f * travel;
             _velocity = _velocity.MoveToward(desiredVelocity, Acceleration * delta);
+            _formationIntent = Mathf.MoveToward(_formationIntent, 0.0f, delta * 5.0f);
             FaceDirection(direction, delta);
             _aimFocus = Mathf.Max(0.0f, _aimFocus - delta * 1.5f);
             _statusText = "Repositioning";
@@ -245,6 +248,7 @@ public partial class SquadController : Node3D
         {
             FaceDirection(direction, delta);
             _aimFocus = Mathf.Clamp(_aimFocus + AimBuildRate * delta, 0.0f, 1.0f);
+            _formationIntent = Mathf.MoveToward(_formationIntent, Mathf.Max(0.35f, _aimFocus), delta * 4.0f);
             _volleyCooldown -= delta;
             _statusText = _aimFocus >= 0.9f ? "Volley Ready" : "Aiming";
 
@@ -260,6 +264,7 @@ public partial class SquadController : Node3D
         }
 
         _aimFocus = Mathf.Max(0.0f, _aimFocus - delta);
+        _formationIntent = Mathf.MoveToward(_formationIntent, 0.15f, delta * 2.5f);
         _volleyCooldown = Mathf.Min(VolleyInterval, _volleyCooldown + delta * 0.4f);
         _statusText = "Holding";
     }
@@ -302,7 +307,7 @@ public partial class SquadController : Node3D
             return;
         }
 
-        var intensity = Role == SquadRole.Lancer ? _chargePower : _aimFocus;
+        var intensity = Mathf.Clamp(_formationIntent, 0.0f, 1.0f);
         for (var i = 0; i < _unitNodes.Count; i++)
         {
             var target = GetFormationSlot(i, intensity);
@@ -320,14 +325,15 @@ public partial class SquadController : Node3D
         {
             var column = index % 2;
             var row = index / 2;
-            var width = Mathf.Lerp(0.85f, 0.52f, intensity);
-            var depth = Mathf.Lerp(0.75f, 1.05f, intensity);
-            return new Vector3((column - 0.5f) * width, 0.0f, row * depth - 0.65f);
+            var width = Mathf.Lerp(1.35f, 0.28f, intensity);
+            var depth = Mathf.Lerp(0.55f, 1.45f, intensity);
+            var forwardPull = Mathf.Lerp(0.0f, -0.75f, intensity);
+            return new Vector3((column - 0.5f) * width, 0.0f, row * depth - 0.55f + forwardPull);
         }
 
         var center = (_unitNodes.Count - 1) * 0.5f;
-        var spread = Mathf.Lerp(0.55f, 0.9f, intensity);
-        var arc = Mathf.Sin((index - center) * 0.75f) * Mathf.Lerp(0.28f, 0.08f, intensity);
+        var spread = Mathf.Lerp(0.45f, 1.15f, intensity);
+        var arc = Mathf.Sin((index - center) * 0.75f) * Mathf.Lerp(0.45f, 0.02f, intensity);
         return new Vector3((index - center) * spread, 0.0f, arc);
     }
 
