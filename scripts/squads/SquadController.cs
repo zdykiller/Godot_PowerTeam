@@ -261,7 +261,7 @@ public partial class SquadController : Node3D
             return;
         }
 
-        var targetYaw = Mathf.Atan2(direction.X, -direction.Z);
+        var targetYaw = Mathf.Atan2(-direction.X, -direction.Z);
         Rotation = new Vector3(
             Rotation.X,
             Mathf.LerpAngle(Rotation.Y, targetYaw, RotationLerp * delta),
