@@ -287,7 +287,7 @@ public partial class SquadController : Node3D
                 Name = $"Unit{i + 1}",
                 Mesh = _bodyMesh.Mesh,
                 MaterialOverride = material,
-                Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.36f),
+                Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.48f),
             };
             unit.Position = GetFormationSlot(i, 0.0f);
             _unitsRoot.AddChild(unit);
@@ -310,7 +310,7 @@ public partial class SquadController : Node3D
             unit.Position = unit.Position.Lerp(target, FormationLerp * delta);
 
             var pulse = 1.0f + _flashTimer * 0.25f + (IsSelected ? 0.08f : 0.0f);
-            unit.Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.36f) * pulse;
+            unit.Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.48f) * pulse;
         }
     }
 
