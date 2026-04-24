@@ -8,11 +8,15 @@ public partial class GameRoot : Node3D
     private Label _hudLabel;
     private SquadController[] _squads = [];
     private TargetDummy[] _targets = [];
+    private ControlPoint _controlPoint;
     private Node3D _debugRoot;
     private int _selectedIndex;
     private string _combatText = "No combat yet";
     private int _targetsBroken;
     private int _comboCount;
+    private int _playerScore;
+    private int _enemyScore;
+    private string _objectiveText = "Hold the point or break enemies.";
 
     [Export]
     public float EffectLifetime = 0.65f;
@@ -23,10 +27,23 @@ public partial class GameRoot : Node3D
     [Export]
     public float VolleyBeamSpacing = 0.35f;
 
+    [Export]
+    public int ScoreToWin = 100;
+
+    [Export]
+    public float CaptureScorePerSecond = 7.0f;
+
+    [Export]
+    public float EnemyCaptureScorePerSecond = 5.0f;
+
+    private float _playerScoreRemainder;
+    private float _enemyScoreRemainder;
+
     public override void _Ready()
     {
         _wheel = GetNode<CommandWheelControl>("UI/CommandWheel");
         _hudLabel = GetNode<Label>("UI/HudPanel/Margin/VBox/StatusLabel");
+        _controlPoint = GetNodeOrNull<ControlPoint>("ControlPoint");
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
         if (_debugRoot == null)
         {
@@ -79,6 +96,8 @@ public partial class GameRoot : Node3D
             }
         }
 
+        SimulateEnemies((float)delta);
+        UpdateControlPointScoring((float)delta);
         UpdateHud();
         ClearExpiredEffectTimers(delta);
     }
@@ -109,7 +128,7 @@ public partial class GameRoot : Node3D
         var targetPos = best.GlobalPosition;
         var defeated = best.ApplyDamage(action.LancerDamage, squad.Name);
         best.AddKnockback(squad.FacingDirection, 7.5f + squad.CurrentSpeed * 0.35f);
-        RegisterHit(defeated);
+        RegisterHit(defeated, best.ScoreValue);
         _combatText = defeated ? $"{squad.Name} shattered {best.Name}" : $"{squad.Name} impaled {best.Name}";
         SpawnImpactPoint(targetPos);
         SpawnLancerTrail(
@@ -156,7 +175,7 @@ public partial class GameRoot : Node3D
             var pushDirection = target.GlobalPosition - squad.GlobalPosition;
             var defeated = target.ApplyDamage(action.VolleyDamage, squad.Name);
             target.AddKnockback(pushDirection, defeated ? 4.0f : 2.0f);
-            RegisterHit(defeated);
+            RegisterHit(defeated, target.ScoreValue);
             SpawnImpactPoint(target.GlobalPosition);
         }
 
@@ -177,6 +196,8 @@ public partial class GameRoot : Node3D
                 "Power Team Prototype",
                 "LMB drag: command wheel",
                 "Tab: switch squad",
+                $"Score: Player {_playerScore}/{ScoreToWin} | Enemy {_enemyScore}/{ScoreToWin}",
+                _objectiveText,
                 $"Selected: {selected.Name}",
                 selected.BuildStatusReport(),
                 _combatText,
@@ -185,7 +206,7 @@ public partial class GameRoot : Node3D
                 "Target Status:",
                 .. _targets.Select(target => target.GetStatusText()),
                 "",
-                "Goal: break both dummies before they respawn",
+                "Goal: score by breaking enemies or holding the point",
                 "Lancer: drag hard to build charge and ram",
                 "Archer: light drag to aim, hard drag to move",
             ]
@@ -340,12 +361,76 @@ public partial class GameRoot : Node3D
         timer.Start();
     }
 
-    private void RegisterHit(bool defeated)
+    private void SimulateEnemies(float delta)
+    {
+        if (_controlPoint == null)
+        {
+            return;
+        }
+
+        foreach (var target in _targets)
+        {
+            target.SimulateAi(_controlPoint.GlobalPosition, delta);
+        }
+    }
+
+    private void UpdateControlPointScoring(float delta)
+    {
+        if (_controlPoint == null)
+        {
+            return;
+        }
+
+        var playerOnPoint = _squads.Any(squad => _controlPoint.Contains(squad.GlobalPosition));
+        var enemyOnPoint = _targets.Any(target => target.IsAlive && _controlPoint.Contains(target.GlobalPosition));
+
+        if (playerOnPoint && !enemyOnPoint)
+        {
+            AddScore(ref _playerScore, ref _playerScoreRemainder, CaptureScorePerSecond * delta);
+            _objectiveText = "Player is holding the point.";
+            _controlPoint.SetStatus("Player +", new Color(0.96f, 0.72f, 0.14f, 1.0f));
+            return;
+        }
+
+        if (enemyOnPoint && !playerOnPoint)
+        {
+            AddScore(ref _enemyScore, ref _enemyScoreRemainder, EnemyCaptureScorePerSecond * delta);
+            _objectiveText = "Enemies are scoring on the point.";
+            _controlPoint.SetStatus("Enemy +", new Color(0.9f, 0.15f, 0.12f, 1.0f));
+            return;
+        }
+
+        if (playerOnPoint && enemyOnPoint)
+        {
+            _objectiveText = "Point contested.";
+            _controlPoint.SetStatus("Contested", new Color(1.0f, 0.95f, 0.2f, 1.0f));
+            return;
+        }
+
+        _objectiveText = "Move onto the point or break enemies.";
+        _controlPoint.SetStatus("Neutral", new Color(0.8f, 0.8f, 0.8f, 1.0f));
+    }
+
+    private void AddScore(ref int score, ref float remainder, float amount)
+    {
+        remainder += amount;
+        var whole = Mathf.FloorToInt(remainder);
+        if (whole <= 0)
+        {
+            return;
+        }
+
+        score = Mathf.Min(ScoreToWin, score + whole);
+        remainder -= whole;
+    }
+
+    private void RegisterHit(bool defeated, int scoreValue)
     {
         _comboCount++;
         if (defeated)
         {
             _targetsBroken++;
+            _playerScore = Mathf.Min(ScoreToWin, _playerScore + scoreValue);
         }
     }
 

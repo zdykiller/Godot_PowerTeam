@@ -14,6 +14,12 @@ public partial class TargetDummy : Node3D
     [Export]
     public float RespawnDelay = 4.0f;
 
+    [Export]
+    public int ScoreValue = 25;
+
+    [Export]
+    public float AiMoveSpeed = 1.8f;
+
     private Label3D _stateLabel;
     private MeshInstance3D _bodyMesh;
     private Vector3 _knockbackVelocity = Vector3.Zero;
@@ -102,6 +108,23 @@ public partial class TargetDummy : Node3D
     }
 
     public float RemainingRespawn => _respawnTimer;
+
+    public void SimulateAi(Vector3 destination, float delta)
+    {
+        if (!IsAlive || _knockbackVelocity.LengthSquared() > 0.01f)
+        {
+            return;
+        }
+
+        var toDestination = destination - GlobalPosition;
+        toDestination.Y = 0.0f;
+        if (toDestination.LengthSquared() <= 0.04f)
+        {
+            return;
+        }
+
+        GlobalPosition += toDestination.Normalized() * AiMoveSpeed * delta;
+    }
 
     public string GetStatusText()
     {

@@ -4,6 +4,7 @@
 [ext_resource type="Script" path="res://scripts/squads/SquadController.cs" id="2_j36x3"]
 [ext_resource type="Script" path="res://scripts/input/CommandWheelControl.cs" id="3_djdo4"]
 [ext_resource type="Script" path="res://scripts/combat/TargetDummy.cs" id="4_hqf8h"]
+[ext_resource type="Script" path="res://scripts/game/ControlPoint.cs" id="5_yw86i"]
 
 [sub_resource type="Environment" id="Environment_rac1j"]
 background_mode = 1
@@ -31,6 +32,11 @@ size = Vector3(0.08, 0.04, 40)
 [sub_resource type="SphereMesh" id="SphereMesh_q2j5k"]
 radius = 0.9
 
+[sub_resource type="CylinderMesh" id="CylinderMesh_point"]
+top_radius = 3.0
+bottom_radius = 3.0
+height = 0.08
+
 [sub_resource type="StandardMaterial3D" id="Material_floor"]
 albedo_color = Color(0.12, 0.18, 0.14, 1)
 
@@ -48,6 +54,9 @@ albedo_color = Color(0.96, 0.96, 0.9, 1)
 
 [sub_resource type="StandardMaterial3D" id="Material_dummy"]
 albedo_color = Color(0.831373, 0.2, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_point"]
+albedo_color = Color(0.8, 0.8, 0.8, 0.55)
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_mhnd2")
@@ -148,6 +157,21 @@ text = "Archer"
 billboard = 1
 font_size = 40
 modulate = Color(0.52549, 0.87451, 0.654902, 1)
+
+[node name="ControlPoint" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -2.5)
+script = ExtResource("5_yw86i")
+
+[node name="Body" type="MeshInstance3D" parent="ControlPoint"]
+mesh = SubResource("CylinderMesh_point")
+material_override = SubResource("Material_point")
+
+[node name="StateLabel" type="Label3D" parent="ControlPoint"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
+text = "Neutral"
+billboard = 1
+font_size = 38
+modulate = Color(0.8, 0.8, 0.8, 1)
 
 [node name="Targets" type="Node3D" parent="."]
 
