@@ -71,10 +71,10 @@ public partial class SquadController : Node3D
     public float BaseAttackRange = 3.0f;
 
     [Export]
-    public float MeleeDamagePerSecond = 1.6f;
+    public float MeleeDamagePerSecond = 0.8f;
 
     [Export]
-    public float MeleeMoraleDamagePerSecond = 2.2f;
+    public float MeleeMoraleDamagePerSecond = 1.1f;
 
     [Export]
     public float EngagementRadius = 3.0f;
@@ -107,10 +107,10 @@ public partial class SquadController : Node3D
     public float AimBuildRate = 1.2f;
 
     [Export]
-    public float LancerImpactDamage = 15.0f;
+    public float LancerImpactDamage = 12.0f;
 
     [Export]
-    public float LancerImpactMoraleDamage = 20.0f;
+    public float LancerImpactMoraleDamage = 16.0f;
 
     [Export]
     public float LancerImpactRange = 2.4f;
@@ -125,10 +125,10 @@ public partial class SquadController : Node3D
     public float ArcherRelocateThreshold = 0.7f;
 
     [Export]
-    public float VolleyDamage = 8.0f;
+    public float VolleyDamage = 6.0f;
 
     [Export]
-    public float VolleyMoraleDamage = 10.0f;
+    public float VolleyMoraleDamage = 8.0f;
 
     [Export]
     public float VolleyInterval = 0.9f;
