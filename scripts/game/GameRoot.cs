@@ -10,8 +10,10 @@ public partial class GameRoot : Node3D
     private BaseCore[] _bases = [];
     private Node3D _debugRoot;
     private SquadController _playerSquad;
+    private readonly List<string> _battleLog = [];
     private string _combatText = "Destroy the enemy base.";
     private string _gameState = "Battle";
+    private float _meleeUiTimer;
 
     [Export]
     public float EffectLifetime = 0.65f;
@@ -39,6 +41,15 @@ public partial class GameRoot : Node3D
 
     [Export]
     public float FlankAttackAbsDotThreshold = 0.35f;
+
+    [Export]
+    public int BattleLogLimit = 8;
+
+    [Export]
+    public float FloatingTextLifetime = 0.85f;
+
+    [Export]
+    public float MeleeUiInterval = 0.75f;
 
     public override void _Ready()
     {
@@ -79,6 +90,7 @@ public partial class GameRoot : Node3D
         }
 
         UpdateEngagements();
+        _meleeUiTimer = Mathf.Max(0.0f, _meleeUiTimer - (float)delta);
 
         foreach (var squad in _squads)
         {
@@ -174,16 +186,18 @@ public partial class GameRoot : Node3D
 
         var targetPos = target.GlobalPosition;
         var positional = GetPositionalMoraleBonus(squad, target);
-        var defeated = target.ApplyDamage(action.LancerDamage, action.LancerMoraleDamage * positional.Multiplier);
+        var damage = target.ApplyDamage(action.LancerDamage, action.LancerMoraleDamage * positional.Multiplier);
         target.AddKnockback(squad.FacingDirection, 5.0f + squad.CurrentSpeed * 0.25f);
         target.PlayImpactReaction(squad.FacingDirection);
-        if (defeated)
+        SpawnDamageText(targetPos, damage, "charge");
+        LogDamage("charge", squad, target, damage, positional.Label);
+        if (damage.Defeated)
         {
             DamageBase(GetBase(target.TeamId), target.BaseDamageOnDefeat, target.Name);
         }
 
         var angleText = positional.Label.Length > 0 ? $" ({positional.Label})" : "";
-        _combatText = defeated ? $"{squad.Name} broke {target.Name}{angleText}" : $"{squad.Name} charged {target.Name}{angleText}";
+        _combatText = damage.Defeated ? $"{squad.Name} broke {target.Name}{angleText}" : $"{squad.Name} charged {target.Name}{angleText}";
         SpawnImpactPoint(targetPos);
         SpawnLancerTrail(squad.GlobalPosition, targetPos, new Color(0.98f, 0.32f, 0.15f, 1.0f));
     }
@@ -235,9 +249,11 @@ public partial class GameRoot : Node3D
         {
             var pushDirection = target.GlobalPosition - squad.GlobalPosition;
             var positional = GetPositionalMoraleBonus(squad, target);
-            var defeated = target.ApplyDamage(action.VolleyDamage, action.VolleyMoraleDamage * positional.Multiplier);
-            target.AddKnockback(pushDirection, defeated ? 4.0f : 2.0f);
-            if (defeated)
+            var damage = target.ApplyDamage(action.VolleyDamage, action.VolleyMoraleDamage * positional.Multiplier);
+            target.AddKnockback(pushDirection, damage.Defeated ? 4.0f : 2.0f);
+            SpawnDamageText(target.GlobalPosition, damage, "volley");
+            LogDamage("volley", squad, target, damage, positional.Label);
+            if (damage.Defeated)
             {
                 DamageBase(GetBase(target.TeamId), target.BaseDamageOnDefeat, target.Name);
             }
@@ -331,21 +347,33 @@ public partial class GameRoot : Node3D
                     continue;
                 }
 
-                var bDefeated = b.ApplyDamage(a.MeleeDamagePerSecond * delta, a.MeleeMoraleDamagePerSecond * delta);
-                var aDefeated = a.ApplyDamage(b.MeleeDamagePerSecond * delta, b.MeleeMoraleDamagePerSecond * delta);
+                var bDamage = b.ApplyDamage(a.MeleeDamagePerSecond * delta, a.MeleeMoraleDamagePerSecond * delta);
+                var aDamage = a.ApplyDamage(b.MeleeDamagePerSecond * delta, b.MeleeMoraleDamagePerSecond * delta);
+                if (_meleeUiTimer <= 0.0f)
+                {
+                    SpawnDamageText(b.GlobalPosition, bDamage, "melee");
+                    SpawnDamageText(a.GlobalPosition, aDamage, "melee");
+                    LogDamage("melee", a, b, bDamage, "");
+                    LogDamage("melee", b, a, aDamage, "");
+                }
 
-                if (bDefeated)
+                if (bDamage.Defeated)
                 {
                     DamageBase(GetBase(b.TeamId), b.BaseDamageOnDefeat, b.Name);
                     _combatText = $"{a.Name} routed {b.Name} in melee.";
                 }
 
-                if (aDefeated)
+                if (aDamage.Defeated)
                 {
                     DamageBase(GetBase(a.TeamId), a.BaseDamageOnDefeat, a.Name);
                     _combatText = $"{b.Name} routed {a.Name} in melee.";
                 }
             }
+        }
+
+        if (_meleeUiTimer <= 0.0f)
+        {
+            _meleeUiTimer = MeleeUiInterval;
         }
     }
 
@@ -359,6 +387,52 @@ public partial class GameRoot : Node3D
         var destroyed = targetBase.ApplyDamage(damage);
         _combatText = destroyed ? $"{source} destroyed {targetBase.Name}" : $"{source} hit {targetBase.Name}";
         SpawnImpactPoint(targetBase.GlobalPosition);
+    }
+
+    private void LogDamage(string source, SquadController attacker, SquadController target, SquadController.DamageResult damage, string angle)
+    {
+        if (damage.HealthDamage <= 0.01f && damage.MoraleDamage <= 0.01f)
+        {
+            return;
+        }
+
+        var angleText = angle.Length > 0 ? $" {angle}" : "";
+        var defeatedText = damage.Defeated ? " ROUTED" : "";
+        _battleLog.Insert(
+            0,
+            $"{source}{angleText}: {attacker.Name} -> {target.Name} -{damage.HealthDamage:0.0} HP -{damage.MoraleDamage:0.0} M{defeatedText}"
+        );
+
+        if (_battleLog.Count > BattleLogLimit)
+        {
+            _battleLog.RemoveRange(BattleLogLimit, _battleLog.Count - BattleLogLimit);
+        }
+    }
+
+    private void SpawnDamageText(Vector3 worldPos, SquadController.DamageResult damage, string source)
+    {
+        if (_debugRoot == null || (damage.HealthDamage <= 0.01f && damage.MoraleDamage <= 0.01f))
+        {
+            return;
+        }
+
+        var label = new Label3D
+        {
+            Text = $"{source}\n-{damage.HealthDamage:0.#} HP  -{damage.MoraleDamage:0.#} M",
+            Position = worldPos + Vector3.Up * 1.4f,
+            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+            FontSize = 32,
+            Modulate = damage.Defeated ? new Color(1.0f, 0.15f, 0.08f, 1.0f) : new Color(1.0f, 0.92f, 0.25f, 1.0f),
+            OutlineSize = 8,
+            OutlineModulate = new Color(0.0f, 0.0f, 0.0f, 0.75f),
+        };
+
+        _debugRoot.AddChild(label);
+        var tween = CreateTween();
+        tween.SetParallel(true);
+        tween.TweenProperty(label, "position", worldPos + Vector3.Up * 2.45f, FloatingTextLifetime);
+        tween.TweenProperty(label, "modulate:a", 0.0f, FloatingTextLifetime);
+        tween.Finished += label.QueueFree;
     }
 
     private void CheckVictory()
@@ -400,6 +474,9 @@ public partial class GameRoot : Node3D
                 $"Player: {_playerSquad.Name}",
                 _playerSquad.BuildStatusReport(),
                 _combatText,
+                "",
+                "Battle Log:",
+                .. _battleLog,
                 "",
                 "Allied Squads:",
                 .. _squads.Where(squad => squad.TeamId == 0).Select(squad => squad.GetStatusText()),

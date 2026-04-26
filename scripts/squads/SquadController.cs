@@ -3,6 +3,13 @@ using System.Text;
 
 public partial class SquadController : Node3D
 {
+    public struct DamageResult
+    {
+        public float HealthDamage;
+        public float MoraleDamage;
+        public bool Defeated;
+    }
+
     public struct CombatAction
     {
         public bool LancerImpact;
@@ -397,26 +404,41 @@ public partial class SquadController : Node3D
         }
     }
 
-    public bool ApplyDamage(float damage, float moraleDamage)
+    public DamageResult ApplyDamage(float damage, float moraleDamage)
     {
         if (!IsAlive)
         {
-            return false;
+            return new DamageResult();
         }
 
-        _health = Mathf.Max(0.0f, _health - Mathf.Max(1.0f, damage - Defense));
-        _morale = Mathf.Max(0.0f, _morale - moraleDamage);
+        var healthBefore = _health;
+        var moraleBefore = _morale;
+        var healthDamage = Mathf.Max(0.0f, damage - Defense);
+        var moraleDamageApplied = Mathf.Max(0.0f, moraleDamage);
+
+        _health = Mathf.Max(0.0f, _health - healthDamage);
+        _morale = Mathf.Max(0.0f, _morale - moraleDamageApplied);
         _flashTimer = 0.25f;
         RefreshVisualFeedback();
 
         if (_health <= 0.0f || _morale <= 0.0f)
         {
             Rout(_health <= 0.0f ? "Broken" : "Routed");
-            return true;
+            return new DamageResult
+            {
+                HealthDamage = healthBefore - _health,
+                MoraleDamage = moraleBefore - _morale,
+                Defeated = true,
+            };
         }
 
         UpdateLabel();
-        return false;
+        return new DamageResult
+        {
+            HealthDamage = healthBefore - _health,
+            MoraleDamage = moraleBefore - _morale,
+            Defeated = false,
+        };
     }
 
     public void AddKnockback(Vector3 direction, float strength)
