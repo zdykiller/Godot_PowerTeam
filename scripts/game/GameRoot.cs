@@ -4,12 +4,28 @@ using System.Collections.Generic;
 
 public partial class GameRoot : Node3D
 {
+    private enum ManualOrderType
+    {
+        Move,
+        Attack,
+    }
+
+    private sealed class ManualOrder
+    {
+        public ManualOrderType Type;
+        public Vector3 TargetPosition;
+        public SquadController TargetSquad;
+    }
+
     private BattleHud _hud;
+    private Camera3D _camera;
     private SquadController[] _squads = [];
     private BaseCore[] _bases = [];
     private Node3D _debugRoot;
     private SquadController _playerSquad;
+    private SquadController _selectedSquad;
     private readonly List<string> _battleLog = [];
+    private readonly Dictionary<SquadController, ManualOrder> _manualOrders = [];
     private string _combatText = "Destroy the enemy base.";
     private string _gameState = "Battle";
     private float _meleeUiTimer;
@@ -75,12 +91,25 @@ public partial class GameRoot : Node3D
     [Export]
     public float RallyMoraleRestore = 18.0f;
 
+    [Export]
+    public float GroundPlaneY = 0.0f;
+
+    [Export]
+    public float ClickSelectRadius = 3.2f;
+
+    [Export]
+    public float ManualMoveStopRadius = 1.6f;
+
+    [Export]
+    public float ManualMoveStrength = 0.95f;
+
     public override void _Ready()
     {
         _hud = GetNode<BattleHud>("UI");
         _hud.TacticSelected += SetAllyTactic;
         _hud.SkillSelected += TriggerBattleSkill;
         _hud.RestartRequested += RestartBattle;
+        _camera = GetViewport().GetCamera3D() ?? GetNodeOrNull<Camera3D>("CameraRig/Camera3D");
 
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
         if (_debugRoot == null)
@@ -107,6 +136,21 @@ public partial class GameRoot : Node3D
         SetSelectedSquad(_playerSquad);
         _hud.SetTactic(_allyTactic);
         UpdateHud();
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (_gameState != "Battle" || _playerSquad == null)
+        {
+            return;
+        }
+
+        if (@event is not InputEventMouseButton mouse || !mouse.Pressed || mouse.ButtonIndex != MouseButton.Left)
+        {
+            return;
+        }
+
+        HandleWorldClick(mouse.Position);
     }
 
     public override void _Process(double delta)
@@ -148,6 +192,7 @@ public partial class GameRoot : Node3D
 
     private void SetSelectedSquad(SquadController selected)
     {
+        _selectedSquad = selected;
         foreach (var squad in _squads)
         {
             squad.SetSelected(squad == selected);
@@ -163,6 +208,11 @@ public partial class GameRoot : Node3D
 
         if (squad.TeamId == 0)
         {
+            if (TryBuildManualCommand(squad, out var manualCommand))
+            {
+                return manualCommand;
+            }
+
             return BuildAllyCommand(squad);
         }
 
@@ -174,6 +224,45 @@ public partial class GameRoot : Node3D
         var nearestEnemy = FindNearestEnemySquad(squad, AiEngageRange);
         var targetPosition = nearestEnemy?.GlobalPosition ?? GetEnemyBase(squad.TeamId)?.GlobalPosition ?? squad.GlobalPosition;
         return BuildMoveCommandTo(squad, targetPosition, nearestEnemy);
+    }
+
+    private bool TryBuildManualCommand(SquadController squad, out Vector2 command)
+    {
+        command = Vector2.Zero;
+        if (!_manualOrders.TryGetValue(squad, out var order))
+        {
+            return false;
+        }
+
+        switch (order.Type)
+        {
+            case ManualOrderType.Move:
+                if (FlatDistance(squad.GlobalPosition, order.TargetPosition) <= ManualMoveStopRadius)
+                {
+                    _manualOrders.Remove(squad);
+                    return false;
+                }
+
+                command = BuildMoveCommandTo(squad, order.TargetPosition, null, ManualMoveStrength);
+                return true;
+            case ManualOrderType.Attack:
+                if (order.TargetSquad == null || !order.TargetSquad.IsAlive)
+                {
+                    _manualOrders.Remove(squad);
+                    return false;
+                }
+
+                if (squad.Role == SquadController.SquadRole.Archer && FlatDistance(squad.GlobalPosition, order.TargetSquad.GlobalPosition) > squad.VolleyRange * 0.85f)
+                {
+                    command = BuildMoveCommandTo(squad, order.TargetSquad.GlobalPosition, null, 0.7f);
+                    return true;
+                }
+
+                command = BuildMoveCommandTo(squad, order.TargetSquad.GlobalPosition, order.TargetSquad);
+                return true;
+            default:
+                return false;
+        }
     }
 
     private Vector2 BuildAllyCommand(SquadController squad)
@@ -326,56 +415,41 @@ public partial class GameRoot : Node3D
 
     private void TriggerChargeOrder()
     {
-        if (_chargeOrderCooldown > 0.0f)
+        if (_chargeOrderCooldown > 0.0f || _selectedSquad == null || !_selectedSquad.IsAlive || _selectedSquad.Role != SquadController.SquadRole.Lancer)
         {
             return;
         }
 
-        SetAllyTactic(BattleHud.AllyTactic.Assault);
-        foreach (var squad in _squads.Where(squad => squad.TeamId == 0 && squad.Role == SquadController.SquadRole.Lancer))
-        {
-            squad.ApplyChargeOrder();
-        }
-
+        _selectedSquad.ApplyChargeOrder();
         _chargeOrderCooldown = ChargeOrderCooldown;
-        _combatText = "Order: Charge!";
-        AddBattleEvent("order: Charge all allied lancers");
+        _combatText = $"{_selectedSquad.Name}: Charge!";
+        AddBattleEvent($"order: {_selectedSquad.Name} charge");
     }
 
     private void TriggerVolleyOrder()
     {
-        if (_volleyOrderCooldown > 0.0f)
+        if (_volleyOrderCooldown > 0.0f || _selectedSquad == null || !_selectedSquad.IsAlive || _selectedSquad.Role != SquadController.SquadRole.Archer)
         {
             return;
         }
 
-        SetAllyTactic(BattleHud.AllyTactic.Focus);
-        foreach (var squad in _squads.Where(squad => squad.TeamId == 0 && squad.Role == SquadController.SquadRole.Archer))
-        {
-            squad.ApplyVolleyOrder();
-        }
-
+        _selectedSquad.ApplyVolleyOrder();
         _volleyOrderCooldown = VolleyOrderCooldown;
-        _combatText = "Order: Volley!";
-        AddBattleEvent("order: Focus fire volley");
+        _combatText = $"{_selectedSquad.Name}: Volley!";
+        AddBattleEvent($"order: {_selectedSquad.Name} volley");
     }
 
     private void TriggerRallyOrder()
     {
-        if (_rallyOrderCooldown > 0.0f)
+        if (_rallyOrderCooldown > 0.0f || _selectedSquad == null || !_selectedSquad.IsAlive)
         {
             return;
         }
 
-        var restored = 0.0f;
-        foreach (var squad in _squads.Where(squad => squad.TeamId == 0))
-        {
-            restored += squad.ApplyRally(RallyMoraleRestore);
-        }
-
+        var restored = _selectedSquad.ApplyRally(RallyMoraleRestore);
         _rallyOrderCooldown = RallyOrderCooldown;
-        _combatText = $"Order: Rally restored {restored:0} morale.";
-        AddBattleEvent($"order: Rally +{restored:0} allied morale");
+        _combatText = $"{_selectedSquad.Name}: Rally +{restored:0} morale.";
+        AddBattleEvent($"order: {_selectedSquad.Name} rally +{restored:0} morale");
     }
 
     private void UpdateSkillCooldowns(float delta)
@@ -706,20 +780,22 @@ public partial class GameRoot : Node3D
 
         var playerBase = GetBase(0);
         var enemyBase = GetBase(1);
+        var selected = _selectedSquad ?? _playerSquad;
+        var selectedOrder = GetManualOrderText(selected);
 
         _hud.SetStatusLines(
             [
                 $"Power Team - {_gameState}",
-                "Auto battle: use tactics and orders",
-                "Tap orders or press 1-4 for tactics",
+                "Select allied squad, then tap ground or enemy",
+                "Skills appear above selected squad",
                 $"Current tactic: {_allyTactic}",
                 $"Orders CD: Charge {_chargeOrderCooldown:0.0}  Volley {_volleyOrderCooldown:0.0}  Rally {_rallyOrderCooldown:0.0}",
                 "Win: destroy enemy base",
                 playerBase?.GetStatusText() ?? "PlayerBase missing",
                 enemyBase?.GetStatusText() ?? "EnemyBase missing",
                 "",
-                $"Player: {_playerSquad.Name}",
-                _playerSquad.BuildStatusReport(),
+                $"Selected: {selected.Name} | {selectedOrder}",
+                selected.BuildStatusReport(),
                 _combatText,
                 "",
                 "Battle Log:",
@@ -732,6 +808,138 @@ public partial class GameRoot : Node3D
                 .. _squads.Where(squad => squad.TeamId == 1).Select(squad => squad.GetStatusText()),
             ]
         );
+
+        UpdateSelectedSkillPanel(selected);
+    }
+
+    private void UpdateSelectedSkillPanel(SquadController selected)
+    {
+        if (_gameState != "Battle" || _camera == null || selected == null || !selected.IsAlive || selected.TeamId != 0)
+        {
+            _hud.SetSelectedSkillPanel(false, Vector2.Zero, "", false, false, 0.0f, 0.0f, 0.0f);
+            return;
+        }
+
+        var screenPosition = _camera.UnprojectPosition(selected.GlobalPosition + Vector3.Up * 3.5f);
+        _hud.SetSelectedSkillPanel(
+            true,
+            screenPosition,
+            selected.Name,
+            selected.Role == SquadController.SquadRole.Lancer,
+            selected.Role == SquadController.SquadRole.Archer,
+            _chargeOrderCooldown,
+            _volleyOrderCooldown,
+            _rallyOrderCooldown
+        );
+    }
+
+    private string GetManualOrderText(SquadController squad)
+    {
+        if (squad == null || !_manualOrders.TryGetValue(squad, out var order))
+        {
+            return "Auto";
+        }
+
+        if (order.Type == ManualOrderType.Attack && order.TargetSquad != null)
+        {
+            return $"Attack {order.TargetSquad.Name}";
+        }
+
+        return "Move";
+    }
+
+    private void HandleWorldClick(Vector2 screenPosition)
+    {
+        if (!TryProjectToGround(screenPosition, out var worldPosition))
+        {
+            return;
+        }
+
+        var clickedAlly = FindClosestSquadAt(worldPosition, squad => squad.TeamId == 0 && squad.IsAlive);
+        if (clickedAlly != null)
+        {
+            SetSelectedSquad(clickedAlly);
+            _combatText = $"Selected {clickedAlly.Name}";
+            AddBattleEvent($"select: {clickedAlly.Name}");
+            return;
+        }
+
+        var selected = _selectedSquad;
+        if (selected == null || !selected.IsAlive || selected.TeamId != 0)
+        {
+            return;
+        }
+
+        var clickedEnemy = FindClosestSquadAt(worldPosition, squad => squad.TeamId != selected.TeamId && squad.IsAlive);
+        if (clickedEnemy != null)
+        {
+            _manualOrders[selected] = new ManualOrder
+            {
+                Type = ManualOrderType.Attack,
+                TargetSquad = clickedEnemy,
+                TargetPosition = clickedEnemy.GlobalPosition,
+            };
+            _combatText = $"{selected.Name}: attack {clickedEnemy.Name}";
+            AddBattleEvent($"command: {selected.Name} attack {clickedEnemy.Name}");
+            SpawnEffectPoint(clickedEnemy.GlobalPosition + Vector3.Up * 0.1f, 0.22f, new Color(1.0f, 0.25f, 0.15f, 1.0f), 0.8f);
+            return;
+        }
+
+        _manualOrders[selected] = new ManualOrder
+        {
+            Type = ManualOrderType.Move,
+            TargetPosition = worldPosition,
+        };
+        _combatText = $"{selected.Name}: move";
+        AddBattleEvent($"command: {selected.Name} move");
+        SpawnEffectPoint(worldPosition + Vector3.Up * 0.1f, 0.2f, new Color(0.25f, 0.85f, 1.0f, 1.0f), 0.8f);
+    }
+
+    private bool TryProjectToGround(Vector2 screenPosition, out Vector3 worldPosition)
+    {
+        worldPosition = Vector3.Zero;
+        if (_camera == null)
+        {
+            return false;
+        }
+
+        var origin = _camera.ProjectRayOrigin(screenPosition);
+        var direction = _camera.ProjectRayNormal(screenPosition);
+        if (Mathf.Abs(direction.Y) <= 0.001f)
+        {
+            return false;
+        }
+
+        var t = (GroundPlaneY - origin.Y) / direction.Y;
+        if (t < 0.0f)
+        {
+            return false;
+        }
+
+        worldPosition = origin + direction * t;
+        return true;
+    }
+
+    private SquadController FindClosestSquadAt(Vector3 worldPosition, System.Func<SquadController, bool> predicate)
+    {
+        SquadController best = null;
+        var bestDistance = ClickSelectRadius;
+        foreach (var squad in _squads)
+        {
+            if (!predicate(squad))
+            {
+                continue;
+            }
+
+            var distance = FlatDistance(worldPosition, squad.GlobalPosition);
+            if (distance <= bestDistance)
+            {
+                bestDistance = distance;
+                best = squad;
+            }
+        }
+
+        return best;
     }
 
     private SquadController FindNearestEnemySquad(SquadController seeker, float range)

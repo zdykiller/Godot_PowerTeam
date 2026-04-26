@@ -26,6 +26,8 @@ public partial class BattleHud : CanvasLayer
     private readonly Dictionary<AllyTactic, Button> _tacticButtons = [];
     private readonly Dictionary<BattleSkill, Button> _skillButtons = [];
     private Label _statusLabel;
+    private PanelContainer _selectedSkillPanel;
+    private Label _selectedSkillTitle;
     private CenterContainer _resultOverlay;
     private Label _resultTitle;
     private Label _resultSummary;
@@ -33,6 +35,7 @@ public partial class BattleHud : CanvasLayer
     public override void _Ready()
     {
         BuildHudPanel();
+        BuildSelectedSkillPanel();
         BuildResultPanel();
         SetTactic(AllyTactic.Assault);
     }
@@ -55,9 +58,38 @@ public partial class BattleHud : CanvasLayer
 
     public void SetSkillCooldowns(float charge, float volley, float rally)
     {
-        SetSkillButtonState(BattleSkill.Charge, "Charge", charge);
-        SetSkillButtonState(BattleSkill.Volley, "Volley", volley);
-        SetSkillButtonState(BattleSkill.Rally, "Rally", rally);
+        SetSkillButtonState(BattleSkill.Charge, "Charge", charge, true);
+        SetSkillButtonState(BattleSkill.Volley, "Volley", volley, true);
+        SetSkillButtonState(BattleSkill.Rally, "Rally", rally, true);
+    }
+
+    public void SetSelectedSkillPanel(
+        bool visible,
+        Vector2 screenPosition,
+        string selectedName,
+        bool canCharge,
+        bool canVolley,
+        float chargeCooldown,
+        float volleyCooldown,
+        float rallyCooldown
+    )
+    {
+        if (_selectedSkillPanel == null)
+        {
+            return;
+        }
+
+        _selectedSkillPanel.Visible = visible;
+        if (!visible)
+        {
+            return;
+        }
+
+        _selectedSkillPanel.Position = screenPosition + new Vector2(-185.0f, -96.0f);
+        _selectedSkillTitle.Text = selectedName;
+        SetSkillButtonState(BattleSkill.Charge, "Charge", chargeCooldown, canCharge);
+        SetSkillButtonState(BattleSkill.Volley, "Volley", volleyCooldown, canVolley);
+        SetSkillButtonState(BattleSkill.Rally, "Rally", rallyCooldown, true);
     }
 
     public void ShowResult(string title, string summary)
@@ -111,21 +143,6 @@ public partial class BattleHud : CanvasLayer
         AddTacticButton(row, AllyTactic.Focus, "Focus");
         AddTacticButton(row, AllyTactic.Regroup, "Regroup");
 
-        var skillTitle = new Label
-        {
-            Text = "Battle Orders",
-        };
-        skillTitle.AddThemeFontSizeOverride("font_size", 20);
-        box.AddChild(skillTitle);
-
-        var skillRow = new HBoxContainer();
-        skillRow.AddThemeConstantOverride("separation", 8);
-        box.AddChild(skillRow);
-
-        AddSkillButton(skillRow, BattleSkill.Charge, "Charge");
-        AddSkillButton(skillRow, BattleSkill.Volley, "Volley");
-        AddSkillButton(skillRow, BattleSkill.Rally, "Rally");
-
         _statusLabel = new Label
         {
             Text = "Loading prototype...",
@@ -164,15 +181,60 @@ public partial class BattleHud : CanvasLayer
         _skillButtons[skill] = button;
     }
 
-    private void SetSkillButtonState(BattleSkill skill, string label, float cooldown)
+    private void SetSkillButtonState(BattleSkill skill, string label, float cooldown, bool available)
     {
         if (!_skillButtons.TryGetValue(skill, out var button))
         {
             return;
         }
 
-        button.Disabled = cooldown > 0.05f;
-        button.Text = cooldown > 0.05f ? $"{label} {cooldown:0.0}" : label;
+        button.Disabled = !available || cooldown > 0.05f;
+        if (!available)
+        {
+            button.Text = $"{label} -";
+        }
+        else
+        {
+            button.Text = cooldown > 0.05f ? $"{label} {cooldown:0.0}" : label;
+        }
+    }
+
+    private void BuildSelectedSkillPanel()
+    {
+        _selectedSkillPanel = new PanelContainer
+        {
+            Name = "SelectedSkillPanel",
+            Visible = false,
+            CustomMinimumSize = new Vector2(370.0f, 78.0f),
+        };
+        AddChild(_selectedSkillPanel);
+
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 10);
+        margin.AddThemeConstantOverride("margin_top", 8);
+        margin.AddThemeConstantOverride("margin_right", 10);
+        margin.AddThemeConstantOverride("margin_bottom", 8);
+        _selectedSkillPanel.AddChild(margin);
+
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 5);
+        margin.AddChild(box);
+
+        _selectedSkillTitle = new Label
+        {
+            Text = "Selected Squad",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        _selectedSkillTitle.AddThemeFontSizeOverride("font_size", 16);
+        box.AddChild(_selectedSkillTitle);
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        box.AddChild(row);
+
+        AddSkillButton(row, BattleSkill.Charge, "Charge");
+        AddSkillButton(row, BattleSkill.Volley, "Volley");
+        AddSkillButton(row, BattleSkill.Rally, "Rally");
     }
 
     private void BuildResultPanel()
