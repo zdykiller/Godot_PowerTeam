@@ -6,7 +6,3 @@
 /.import/
 /bin/
 /obj/
-
-# Local/generated 3D assets can be very large. Commit optimized game-ready
-# models intentionally with `git add -f` after size checks.
-/assets/units/axer/

@@ -405,6 +405,7 @@ public partial class SquadController : Node3D
             };
             var modelInstance = UnitModelScene.Instantiate<Node3D>();
             modelRoot.AddChild(modelInstance);
+            ApplyMaterialOverride(modelRoot, _bodyMesh.MaterialOverride);
             return modelRoot;
         }
 
@@ -431,6 +432,24 @@ public partial class SquadController : Node3D
         }
 
         unit.Scale = Vector3.One * GetUnitVisualScale() * pulse;
+    }
+
+    private void ApplyMaterialOverride(Node node, Material material)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        if (node is MeshInstance3D mesh)
+        {
+            mesh.MaterialOverride = material;
+        }
+
+        foreach (var child in node.GetChildren())
+        {
+            ApplyMaterialOverride(child, material);
+        }
     }
 
     private void UpdateFormation(float delta)
