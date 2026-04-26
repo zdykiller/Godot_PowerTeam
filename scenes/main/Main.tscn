@@ -2,12 +2,10 @@
 
 [ext_resource type="Script" path="res://scripts/game/GameRoot.cs" id="1_mhnd2"]
 [ext_resource type="Script" path="res://scripts/squads/SquadController.cs" id="2_j36x3"]
-[ext_resource type="Script" path="res://scripts/input/CommandWheelControl.cs" id="3_djdo4"]
-[ext_resource type="Script" path="res://scripts/combat/TargetDummy.cs" id="4_hqf8h"]
-[ext_resource type="Script" path="res://scripts/game/ControlPoint.cs" id="5_yw86i"]
 [ext_resource type="Script" path="res://scripts/game/BaseCore.cs" id="6_c86hw"]
 [ext_resource type="PackedScene" path="res://assets/units/kaykit/knight/knight.glb" id="7_f6l8i"]
 [ext_resource type="PackedScene" path="res://assets/units/kaykit/ranger/ranger.glb" id="8_x0uwj"]
+[ext_resource type="Script" path="res://scripts/ui/BattleHud.cs" id="9_27fsy"]
 
 [sub_resource type="Environment" id="Environment_rac1j"]
 background_mode = 1
@@ -35,14 +33,6 @@ size = Vector3(0.08, 0.04, 72)
 [sub_resource type="BoxMesh" id="BoxMesh_base"]
 size = Vector3(5.5, 2.2, 2.6)
 
-[sub_resource type="SphereMesh" id="SphereMesh_q2j5k"]
-radius = 0.9
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_point"]
-top_radius = 3.0
-bottom_radius = 3.0
-height = 0.08
-
 [sub_resource type="StandardMaterial3D" id="Material_floor"]
 albedo_color = Color(0.12, 0.18, 0.14, 1)
 
@@ -60,12 +50,6 @@ albedo_color = Color(0.95, 0.18, 0.12, 1)
 
 [sub_resource type="StandardMaterial3D" id="Material_arrow"]
 albedo_color = Color(0.96, 0.96, 0.9, 1)
-
-[sub_resource type="StandardMaterial3D" id="Material_dummy"]
-albedo_color = Color(0.831373, 0.2, 0.2, 1)
-
-[sub_resource type="StandardMaterial3D" id="Material_point"]
-albedo_color = Color(0.8, 0.8, 0.8, 0.55)
 
 [sub_resource type="StandardMaterial3D" id="Material_player_base"]
 albedo_color = Color(0.95, 0.74, 0.16, 1)
@@ -340,78 +324,5 @@ billboard = 1
 font_size = 44
 modulate = Color(1, 0.35, 0.25, 1)
 
-[node name="ControlPoint" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0)
-script = ExtResource("5_yw86i")
-
-[node name="Body" type="MeshInstance3D" parent="ControlPoint"]
-mesh = SubResource("CylinderMesh_point")
-material_override = SubResource("Material_point")
-
-[node name="StateLabel" type="Label3D" parent="ControlPoint"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
-text = "Neutral"
-billboard = 1
-font_size = 38
-modulate = Color(0.8, 0.8, 0.8, 1)
-
-[node name="Targets" type="Node3D" parent="."]
-
-[node name="DummyA" type="Node3D" parent="Targets"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, -6)
-script = ExtResource("4_hqf8h")
-
-[node name="Body" type="MeshInstance3D" parent="Targets/DummyA"]
-mesh = SubResource("SphereMesh_q2j5k")
-material_override = SubResource("Material_dummy")
-
-[node name="StateLabel" type="Label3D" parent="Targets/DummyA"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
-text = "DummyA"
-billboard = 1
-font_size = 32
-modulate = Color(1, 0.9, 0.3, 1)
-
-[node name="DummyB" type="Node3D" parent="Targets"]
-transform = Transform3D(0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, 4, 0.8, -6)
-script = ExtResource("4_hqf8h")
-
-[node name="Body" type="MeshInstance3D" parent="Targets/DummyB"]
-mesh = SubResource("SphereMesh_q2j5k")
-material_override = SubResource("Material_dummy")
-
-[node name="StateLabel" type="Label3D" parent="Targets/DummyB"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.0, 0)
-text = "DummyB"
-billboard = 1
-font_size = 32
-modulate = Color(1, 0.9, 0.3, 1)
-
 [node name="UI" type="CanvasLayer" parent="."]
-
-[node name="CommandWheel" type="Control" parent="UI"]
-layout_mode = 3
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-script = ExtResource("3_djdo4")
-
-[node name="HudPanel" type="PanelContainer" parent="UI"]
-offset_left = 24.0
-offset_top = 24.0
-offset_right = 600.0
-offset_bottom = 430.0
-
-[node name="Margin" type="MarginContainer" parent="UI/HudPanel"]
-theme_override_constants/margin_left = 20
-theme_override_constants/margin_top = 18
-theme_override_constants/margin_right = 20
-theme_override_constants/margin_bottom = 18
-
-[node name="VBox" type="VBoxContainer" parent="UI/HudPanel/Margin"]
-
-[node name="StatusLabel" type="Label" parent="UI/HudPanel/Margin/VBox"]
-text = "Loading prototype..."
-theme_override_font_sizes/font_size = 20
+script = ExtResource("9_27fsy")

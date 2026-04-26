@@ -4,20 +4,8 @@ using System.Collections.Generic;
 
 public partial class GameRoot : Node3D
 {
-    private enum AllyTactic
-    {
-        Assault,
-        Hold,
-        Focus,
-        Regroup,
-    }
-
+    private BattleHud _hud;
     private CommandWheelControl _wheel;
-    private Label _hudLabel;
-    private PanelContainer _resultPanel;
-    private Label _resultTitle;
-    private Label _resultSummary;
-    private readonly Dictionary<AllyTactic, Button> _tacticButtons = [];
     private SquadController[] _squads = [];
     private BaseCore[] _bases = [];
     private Node3D _debugRoot;
@@ -26,7 +14,7 @@ public partial class GameRoot : Node3D
     private string _combatText = "Destroy the enemy base.";
     private string _gameState = "Battle";
     private float _meleeUiTimer;
-    private AllyTactic _allyTactic = AllyTactic.Assault;
+    private BattleHud.AllyTactic _allyTactic = BattleHud.AllyTactic.Assault;
 
     [Export]
     public float EffectLifetime = 0.65f;
@@ -75,10 +63,11 @@ public partial class GameRoot : Node3D
 
     public override void _Ready()
     {
-        _wheel = GetNode<CommandWheelControl>("UI/CommandWheel");
-        _hudLabel = GetNode<Label>("UI/HudPanel/Margin/VBox/StatusLabel");
-        BuildTacticButtons();
-        BuildResultPanel();
+        _hud = GetNode<BattleHud>("UI");
+        _wheel = _hud.CommandWheel;
+        _hud.TacticSelected += SetAllyTactic;
+        _hud.RestartRequested += RestartBattle;
+
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
         if (_debugRoot == null)
         {
@@ -92,7 +81,7 @@ public partial class GameRoot : Node3D
 
         if (_playerSquad == null || _bases.Length < 2)
         {
-            _hudLabel.Text = "Battle scene missing player squad or bases.";
+            _hud.SetStatusLines(["Battle scene missing player squad or bases."]);
             return;
         }
 
@@ -102,115 +91,8 @@ public partial class GameRoot : Node3D
         }
 
         SetSelectedSquad(_playerSquad);
-        UpdateTacticButtons();
+        _hud.SetTactic(_allyTactic);
         UpdateHud();
-    }
-
-    private void BuildTacticButtons()
-    {
-        var vbox = GetNodeOrNull<VBoxContainer>("UI/HudPanel/Margin/VBox");
-        if (vbox == null || _tacticButtons.Count > 0)
-        {
-            return;
-        }
-
-        var title = new Label
-        {
-            Name = "TacticTitle",
-            Text = "Ally Tactics",
-        };
-        title.AddThemeFontSizeOverride("font_size", 20);
-        vbox.AddChild(title);
-        vbox.MoveChild(title, 0);
-
-        var row = new HBoxContainer
-        {
-            Name = "TacticButtons",
-        };
-        row.AddThemeConstantOverride("separation", 8);
-        vbox.AddChild(row);
-        vbox.MoveChild(row, 1);
-
-        AddTacticButton(row, AllyTactic.Assault, "Assault");
-        AddTacticButton(row, AllyTactic.Hold, "Hold");
-        AddTacticButton(row, AllyTactic.Focus, "Focus");
-        AddTacticButton(row, AllyTactic.Regroup, "Regroup");
-    }
-
-    private void BuildResultPanel()
-    {
-        var ui = GetNodeOrNull<CanvasLayer>("UI");
-        if (ui == null || _resultPanel != null)
-        {
-            return;
-        }
-
-        var center = new CenterContainer
-        {
-            Name = "ResultOverlay",
-            Visible = false,
-        };
-        center.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        ui.AddChild(center);
-
-        _resultPanel = new PanelContainer
-        {
-            Name = "ResultPanel",
-            CustomMinimumSize = new Vector2(520.0f, 260.0f),
-        };
-        center.AddChild(_resultPanel);
-
-        var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 28);
-        margin.AddThemeConstantOverride("margin_top", 24);
-        margin.AddThemeConstantOverride("margin_right", 28);
-        margin.AddThemeConstantOverride("margin_bottom", 24);
-        _resultPanel.AddChild(margin);
-
-        var box = new VBoxContainer();
-        box.AddThemeConstantOverride("separation", 16);
-        margin.AddChild(box);
-
-        _resultTitle = new Label
-        {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Text = "Battle Complete",
-        };
-        _resultTitle.AddThemeFontSizeOverride("font_size", 38);
-        box.AddChild(_resultTitle);
-
-        _resultSummary = new Label
-        {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Text = "The battle has ended.",
-        };
-        _resultSummary.AddThemeFontSizeOverride("font_size", 22);
-        box.AddChild(_resultSummary);
-
-        var restartButton = new Button
-        {
-            Text = "Restart Battle",
-            CustomMinimumSize = new Vector2(260.0f, 58.0f),
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        restartButton.AddThemeFontSizeOverride("font_size", 24);
-        restartButton.Pressed += RestartBattle;
-        box.AddChild(restartButton);
-    }
-
-    private void AddTacticButton(HBoxContainer row, AllyTactic tactic, string text)
-    {
-        var button = new Button
-        {
-            Text = text,
-            ToggleMode = true,
-            CustomMinimumSize = new Vector2(118.0f, 44.0f),
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        button.AddThemeFontSizeOverride("font_size", 18);
-        button.Pressed += () => SetAllyTactic(tactic);
-        row.AddChild(button);
-        _tacticButtons[tactic] = button;
     }
 
     public override void _Process(double delta)
@@ -294,11 +176,11 @@ public partial class GameRoot : Node3D
     {
         switch (_allyTactic)
         {
-            case AllyTactic.Hold:
+            case BattleHud.AllyTactic.Hold:
                 return BuildHoldCommand(squad);
-            case AllyTactic.Focus:
+            case BattleHud.AllyTactic.Focus:
                 return BuildFocusCommand(squad);
-            case AllyTactic.Regroup:
+            case BattleHud.AllyTactic.Regroup:
                 return BuildRegroupCommand(squad);
             default:
                 var nearestEnemy = FindNearestEnemySquad(squad, AiEngageRange);
@@ -389,23 +271,23 @@ public partial class GameRoot : Node3D
     {
         if (Input.IsKeyPressed(Key.Key1))
         {
-            SetAllyTactic(AllyTactic.Assault);
+            SetAllyTactic(BattleHud.AllyTactic.Assault);
         }
         else if (Input.IsKeyPressed(Key.Key2))
         {
-            SetAllyTactic(AllyTactic.Hold);
+            SetAllyTactic(BattleHud.AllyTactic.Hold);
         }
         else if (Input.IsKeyPressed(Key.Key3))
         {
-            SetAllyTactic(AllyTactic.Focus);
+            SetAllyTactic(BattleHud.AllyTactic.Focus);
         }
         else if (Input.IsKeyPressed(Key.Key4))
         {
-            SetAllyTactic(AllyTactic.Regroup);
+            SetAllyTactic(BattleHud.AllyTactic.Regroup);
         }
     }
 
-    private void SetAllyTactic(AllyTactic tactic)
+    private void SetAllyTactic(BattleHud.AllyTactic tactic)
     {
         if (_allyTactic == tactic)
         {
@@ -414,15 +296,7 @@ public partial class GameRoot : Node3D
 
         _allyTactic = tactic;
         _combatText = $"Allies: {_allyTactic}";
-        UpdateTacticButtons();
-    }
-
-    private void UpdateTacticButtons()
-    {
-        foreach (var pair in _tacticButtons)
-        {
-            pair.Value.ButtonPressed = pair.Key == _allyTactic;
-        }
+        _hud.SetTactic(_allyTactic);
     }
 
     private void ResolveLancerImpact(SquadController squad, SquadController.CombatAction action)
@@ -727,12 +601,7 @@ public partial class GameRoot : Node3D
 
         _gameState = result;
         _combatText = $"{result}: {summary}";
-        if (_resultPanel != null)
-        {
-            _resultPanel.GetParent<Control>().Visible = true;
-            _resultTitle.Text = result;
-            _resultSummary.Text = summary;
-        }
+        _hud.ShowResult(result, summary);
     }
 
     private void RestartBattle()
@@ -750,11 +619,10 @@ public partial class GameRoot : Node3D
         var playerBase = GetBase(0);
         var enemyBase = GetBase(1);
 
-        _hudLabel.Text = string.Join(
-            "\n",
+        _hud.SetStatusLines(
             [
                 $"Power Team - {_gameState}",
-                "LMB drag: command squad intent",
+                "Drag anywhere: command squad intent",
                 "Tap tactic buttons or press 1-4",
                 $"Current tactic: {_allyTactic}",
                 "Win: destroy enemy base",
