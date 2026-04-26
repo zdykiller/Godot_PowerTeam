@@ -162,7 +162,8 @@ public partial class GameRoot : Node3D
 
         var targetPos = target.GlobalPosition;
         var defeated = target.ApplyDamage(action.LancerDamage, action.LancerMoraleDamage);
-        target.AddKnockback(squad.FacingDirection, 7.5f + squad.CurrentSpeed * 0.35f);
+        target.AddKnockback(squad.FacingDirection, 5.0f + squad.CurrentSpeed * 0.25f);
+        target.PlayImpactReaction(squad.FacingDirection);
         if (defeated)
         {
             DamageBase(GetBase(target.TeamId), target.BaseDamageOnDefeat, target.Name);

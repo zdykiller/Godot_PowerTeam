@@ -89,16 +89,16 @@ public partial class SquadController : Node3D
     public float DisengageDelay = 0.55f;
 
     [Export]
-    public float MoveSpeed = 8.0f;
+    public float MoveSpeed = 5.2f;
 
     [Export]
-    public float Acceleration = 20.0f;
+    public float Acceleration = 14.0f;
 
     [Export]
     public float RotationLerp = 10.0f;
 
     [Export]
-    public float ChargeSpeedThreshold = 5.0f;
+    public float ChargeSpeedThreshold = 3.4f;
 
     [Export]
     public float ChargeBuildRate = 0.7f;
@@ -166,6 +166,24 @@ public partial class SquadController : Node3D
     [Export]
     public float MoraleDiscRadius = 1.25f;
 
+    [Export]
+    public int ImpactedUnitMin = 1;
+
+    [Export]
+    public int ImpactedUnitMax = 2;
+
+    [Export]
+    public float ImpactRecoverTime = 0.9f;
+
+    [Export]
+    public float ImpactScatterDistance = 1.1f;
+
+    [Export]
+    public float ImpactLift = 0.35f;
+
+    [Export]
+    public float KnockdownTiltDegrees = 72.0f;
+
     private Label3D _stateLabel;
     private MeshInstance3D _bodyMesh;
     private Node3D _unitsRoot;
@@ -173,6 +191,7 @@ public partial class SquadController : Node3D
     private MeshInstance3D _moraleDisc;
     private StandardMaterial3D _moraleDiscMaterial;
     private readonly System.Collections.Generic.List<Node3D> _unitNodes = [];
+    private readonly System.Collections.Generic.List<UnitImpactState> _impactStates = [];
     private Vector3 _velocity = Vector3.Zero;
     private float _chargePower;
     private float _aimFocus;
@@ -196,6 +215,14 @@ public partial class SquadController : Node3D
         Active,
         Routed,
         Regrouping,
+    }
+
+    private sealed class UnitImpactState
+    {
+        public float Timer;
+        public float Duration;
+        public Vector3 Offset;
+        public Vector3 RotationDegrees;
     }
 
     public bool IsSelected { get; private set; }
@@ -230,6 +257,7 @@ public partial class SquadController : Node3D
         {
             _flashTimer = Mathf.Max(0.0f, _flashTimer - (float)delta);
         }
+        UpdateImpactTimers((float)delta);
 
         if (_state == SquadState.Routed)
         {
@@ -389,6 +417,55 @@ public partial class SquadController : Node3D
         _velocity += direction.Normalized() * strength;
     }
 
+    public void PlayImpactReaction(Vector3 worldDirection)
+    {
+        if (_unitNodes.Count == 0 || worldDirection.LengthSquared() <= 0.001f)
+        {
+            return;
+        }
+
+        var visibleIndexes = new System.Collections.Generic.List<int>();
+        for (var i = 0; i < _unitNodes.Count; i++)
+        {
+            if (_unitNodes[i].Visible)
+            {
+                visibleIndexes.Add(i);
+            }
+        }
+
+        if (visibleIndexes.Count == 0)
+        {
+            return;
+        }
+
+        var hitCount = Mathf.Clamp(GD.RandRange(ImpactedUnitMin, ImpactedUnitMax), 1, visibleIndexes.Count);
+        var localDirection = GlobalTransform.Basis.Inverse() * worldDirection.Normalized();
+        localDirection.Y = 0.0f;
+        if (localDirection.LengthSquared() <= 0.001f)
+        {
+            localDirection = Vector3.Back;
+        }
+        localDirection = localDirection.Normalized();
+
+        for (var i = 0; i < hitCount; i++)
+        {
+            var pick = GD.RandRange(0, visibleIndexes.Count - 1);
+            var unitIndex = visibleIndexes[pick];
+            visibleIndexes.RemoveAt(pick);
+
+            var side = new Vector3(-localDirection.Z, 0.0f, localDirection.X) * (float)GD.RandRange(-0.45, 0.45);
+            var offset = (localDirection + side).Normalized() * (float)GD.RandRange(ImpactScatterDistance * 0.55f, ImpactScatterDistance);
+            _impactStates[unitIndex].Timer = ImpactRecoverTime;
+            _impactStates[unitIndex].Duration = ImpactRecoverTime;
+            _impactStates[unitIndex].Offset = offset;
+            _impactStates[unitIndex].RotationDegrees = new Vector3(
+                KnockdownTiltDegrees * (float)GD.RandRange(0.75, 1.05),
+                0.0f,
+                KnockdownTiltDegrees * 0.25f * (float)GD.RandRange(-1.0, 1.0)
+            );
+        }
+    }
+
     public string GetStatusText()
     {
         if (IsAlive)
@@ -536,6 +613,7 @@ public partial class SquadController : Node3D
             unit.Position = GetFormationSlot(i, 0.0f);
             _unitsRoot.AddChild(unit);
             _unitNodes.Add(unit);
+            _impactStates.Add(new UnitImpactState());
         }
     }
 
@@ -704,11 +782,53 @@ public partial class SquadController : Node3D
         {
             var target = GetFormationSlot(i, intensity);
             var unit = _unitNodes[i];
+            var impactState = _impactStates[i];
+            var impactRatio = GetImpactRatio(impactState);
+            if (impactRatio > 0.0f)
+            {
+                var phase = 1.0f - impactRatio;
+                target += impactState.Offset * impactRatio;
+                target.Y += Mathf.Sin(phase * Mathf.Pi) * ImpactLift;
+            }
+
             unit.Position = unit.Position.Lerp(target, FormationLerp * delta);
+            unit.RotationDegrees = GetBaseUnitRotationDegrees().Lerp(
+                GetBaseUnitRotationDegrees() + impactState.RotationDegrees,
+                impactRatio
+            );
 
             var pulse = 1.0f + _flashTimer * 0.25f + (IsSelected ? 0.08f : 0.0f);
             SetUnitScale(unit, pulse);
         }
+    }
+
+    private void UpdateImpactTimers(float delta)
+    {
+        foreach (var state in _impactStates)
+        {
+            if (state.Timer <= 0.0f)
+            {
+                continue;
+            }
+
+            state.Timer = Mathf.Max(0.0f, state.Timer - delta);
+        }
+    }
+
+    private float GetImpactRatio(UnitImpactState state)
+    {
+        if (state.Timer <= 0.0f || state.Duration <= 0.0f)
+        {
+            return 0.0f;
+        }
+
+        var ratio = state.Timer / state.Duration;
+        return ratio * ratio;
+    }
+
+    private Vector3 GetBaseUnitRotationDegrees()
+    {
+        return UnitModelScene != null ? UnitModelRotationDegrees : Vector3.Zero;
     }
 
     private Vector3 GetFormationSlot(int index, float intensity)

@@ -152,7 +152,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 15)
 script = ExtResource("2_j36x3")
 Role = 1
 TeamId = 0
-MoveSpeed = 7.0
+MoveSpeed = 4.7
 UnitModelScene = ExtResource("8_x0uwj")
 UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
@@ -247,7 +247,7 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.9, -18)
 script = ExtResource("2_j36x3")
 Role = 1
 TeamId = 1
-MoveSpeed = 7.0
+MoveSpeed = 4.7
 UnitModelScene = ExtResource("8_x0uwj")
 UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
