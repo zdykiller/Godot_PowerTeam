@@ -5,7 +5,6 @@ using System.Collections.Generic;
 public partial class GameRoot : Node3D
 {
     private BattleHud _hud;
-    private CommandWheelControl _wheel;
     private SquadController[] _squads = [];
     private BaseCore[] _bases = [];
     private Node3D _debugRoot;
@@ -14,6 +13,9 @@ public partial class GameRoot : Node3D
     private string _combatText = "Destroy the enemy base.";
     private string _gameState = "Battle";
     private float _meleeUiTimer;
+    private float _chargeOrderCooldown;
+    private float _volleyOrderCooldown;
+    private float _rallyOrderCooldown;
     private BattleHud.AllyTactic _allyTactic = BattleHud.AllyTactic.Assault;
 
     [Export]
@@ -61,11 +63,23 @@ public partial class GameRoot : Node3D
     [Export]
     public float MeleeUiInterval = 0.75f;
 
+    [Export]
+    public float ChargeOrderCooldown = 8.0f;
+
+    [Export]
+    public float VolleyOrderCooldown = 6.0f;
+
+    [Export]
+    public float RallyOrderCooldown = 12.0f;
+
+    [Export]
+    public float RallyMoraleRestore = 18.0f;
+
     public override void _Ready()
     {
         _hud = GetNode<BattleHud>("UI");
-        _wheel = _hud.CommandWheel;
         _hud.TacticSelected += SetAllyTactic;
+        _hud.SkillSelected += TriggerBattleSkill;
         _hud.RestartRequested += RestartBattle;
 
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
@@ -105,23 +119,13 @@ public partial class GameRoot : Node3D
 
         UpdateEngagements();
         _meleeUiTimer = Mathf.Max(0.0f, _meleeUiTimer - (float)delta);
+        UpdateSkillCooldowns((float)delta);
         UpdateTacticInput();
 
         foreach (var squad in _squads)
         {
-            var command = Vector2.Zero;
-            var active = false;
-
-            if (squad == _playerSquad)
-            {
-                command = _wheel.CommandVector;
-                active = _wheel.IsActive;
-            }
-            else
-            {
-                command = BuildAiCommand(squad);
-                active = command.LengthSquared() > 0.001f;
-            }
+            var command = BuildAiCommand(squad);
+            var active = command.LengthSquared() > 0.001f;
 
             var action = squad.Simulate((float)delta, command, active);
             if (action.LancerImpact)
@@ -297,6 +301,89 @@ public partial class GameRoot : Node3D
         _allyTactic = tactic;
         _combatText = $"Allies: {_allyTactic}";
         _hud.SetTactic(_allyTactic);
+    }
+
+    private void TriggerBattleSkill(BattleHud.BattleSkill skill)
+    {
+        if (_gameState != "Battle")
+        {
+            return;
+        }
+
+        switch (skill)
+        {
+            case BattleHud.BattleSkill.Charge:
+                TriggerChargeOrder();
+                break;
+            case BattleHud.BattleSkill.Volley:
+                TriggerVolleyOrder();
+                break;
+            case BattleHud.BattleSkill.Rally:
+                TriggerRallyOrder();
+                break;
+        }
+    }
+
+    private void TriggerChargeOrder()
+    {
+        if (_chargeOrderCooldown > 0.0f)
+        {
+            return;
+        }
+
+        SetAllyTactic(BattleHud.AllyTactic.Assault);
+        foreach (var squad in _squads.Where(squad => squad.TeamId == 0 && squad.Role == SquadController.SquadRole.Lancer))
+        {
+            squad.ApplyChargeOrder();
+        }
+
+        _chargeOrderCooldown = ChargeOrderCooldown;
+        _combatText = "Order: Charge!";
+        AddBattleEvent("order: Charge all allied lancers");
+    }
+
+    private void TriggerVolleyOrder()
+    {
+        if (_volleyOrderCooldown > 0.0f)
+        {
+            return;
+        }
+
+        SetAllyTactic(BattleHud.AllyTactic.Focus);
+        foreach (var squad in _squads.Where(squad => squad.TeamId == 0 && squad.Role == SquadController.SquadRole.Archer))
+        {
+            squad.ApplyVolleyOrder();
+        }
+
+        _volleyOrderCooldown = VolleyOrderCooldown;
+        _combatText = "Order: Volley!";
+        AddBattleEvent("order: Focus fire volley");
+    }
+
+    private void TriggerRallyOrder()
+    {
+        if (_rallyOrderCooldown > 0.0f)
+        {
+            return;
+        }
+
+        var restored = 0.0f;
+        foreach (var squad in _squads.Where(squad => squad.TeamId == 0))
+        {
+            restored += squad.ApplyRally(RallyMoraleRestore);
+        }
+
+        _rallyOrderCooldown = RallyOrderCooldown;
+        _combatText = $"Order: Rally restored {restored:0} morale.";
+        AddBattleEvent($"order: Rally +{restored:0} allied morale");
+    }
+
+    private void UpdateSkillCooldowns(float delta)
+    {
+        _chargeOrderCooldown = Mathf.Max(0.0f, _chargeOrderCooldown - delta);
+        _volleyOrderCooldown = Mathf.Max(0.0f, _volleyOrderCooldown - delta);
+        _rallyOrderCooldown = Mathf.Max(0.0f, _rallyOrderCooldown - delta);
+        _hud.SetSkillCooldowns(_chargeOrderCooldown, _volleyOrderCooldown, _rallyOrderCooldown);
     }
 
     private void ResolveLancerImpact(SquadController squad, SquadController.CombatAction action)
@@ -540,11 +627,12 @@ public partial class GameRoot : Node3D
 
         var angleText = angle.Length > 0 ? $" {angle}" : "";
         var defeatedText = damage.Defeated ? " ROUTED" : "";
-        _battleLog.Insert(
-            0,
-            $"{source}{angleText}: {attacker.Name} -> {target.Name} -{damage.HealthDamage:0.0} HP -{damage.MoraleDamage:0.0} M{defeatedText}"
-        );
+        AddBattleEvent($"{source}{angleText}: {attacker.Name} -> {target.Name} -{damage.HealthDamage:0.0} HP -{damage.MoraleDamage:0.0} M{defeatedText}");
+    }
 
+    private void AddBattleEvent(string text)
+    {
+        _battleLog.Insert(0, text);
         if (_battleLog.Count > BattleLogLimit)
         {
             _battleLog.RemoveRange(BattleLogLimit, _battleLog.Count - BattleLogLimit);
@@ -622,9 +710,10 @@ public partial class GameRoot : Node3D
         _hud.SetStatusLines(
             [
                 $"Power Team - {_gameState}",
-                "Drag anywhere: command squad intent",
-                "Tap tactic buttons or press 1-4",
+                "Auto battle: use tactics and orders",
+                "Tap orders or press 1-4 for tactics",
                 $"Current tactic: {_allyTactic}",
+                $"Orders CD: Charge {_chargeOrderCooldown:0.0}  Volley {_volleyOrderCooldown:0.0}  Rally {_rallyOrderCooldown:0.0}",
                 "Win: destroy enemy base",
                 playerBase?.GetStatusText() ?? "PlayerBase missing",
                 enemyBase?.GetStatusText() ?? "EnemyBase missing",

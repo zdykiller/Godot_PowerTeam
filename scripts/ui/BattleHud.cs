@@ -12,20 +12,26 @@ public partial class BattleHud : CanvasLayer
         Regroup,
     }
 
+    public enum BattleSkill
+    {
+        Charge,
+        Volley,
+        Rally,
+    }
+
     public event Action<AllyTactic> TacticSelected;
+    public event Action<BattleSkill> SkillSelected;
     public event Action RestartRequested;
 
     private readonly Dictionary<AllyTactic, Button> _tacticButtons = [];
+    private readonly Dictionary<BattleSkill, Button> _skillButtons = [];
     private Label _statusLabel;
     private CenterContainer _resultOverlay;
     private Label _resultTitle;
     private Label _resultSummary;
 
-    public CommandWheelControl CommandWheel { get; private set; }
-
     public override void _Ready()
     {
-        BuildCommandWheel();
         BuildHudPanel();
         BuildResultPanel();
         SetTactic(AllyTactic.Assault);
@@ -47,6 +53,13 @@ public partial class BattleHud : CanvasLayer
         }
     }
 
+    public void SetSkillCooldowns(float charge, float volley, float rally)
+    {
+        SetSkillButtonState(BattleSkill.Charge, "Charge", charge);
+        SetSkillButtonState(BattleSkill.Volley, "Volley", volley);
+        SetSkillButtonState(BattleSkill.Rally, "Rally", rally);
+    }
+
     public void ShowResult(string title, string summary)
     {
         if (_resultOverlay == null)
@@ -57,16 +70,6 @@ public partial class BattleHud : CanvasLayer
         _resultOverlay.Visible = true;
         _resultTitle.Text = title;
         _resultSummary.Text = summary;
-    }
-
-    private void BuildCommandWheel()
-    {
-        CommandWheel = new CommandWheelControl
-        {
-            Name = "CommandWheel",
-        };
-        CommandWheel.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-        AddChild(CommandWheel);
     }
 
     private void BuildHudPanel()
@@ -108,6 +111,21 @@ public partial class BattleHud : CanvasLayer
         AddTacticButton(row, AllyTactic.Focus, "Focus");
         AddTacticButton(row, AllyTactic.Regroup, "Regroup");
 
+        var skillTitle = new Label
+        {
+            Text = "Battle Orders",
+        };
+        skillTitle.AddThemeFontSizeOverride("font_size", 20);
+        box.AddChild(skillTitle);
+
+        var skillRow = new HBoxContainer();
+        skillRow.AddThemeConstantOverride("separation", 8);
+        box.AddChild(skillRow);
+
+        AddSkillButton(skillRow, BattleSkill.Charge, "Charge");
+        AddSkillButton(skillRow, BattleSkill.Volley, "Volley");
+        AddSkillButton(skillRow, BattleSkill.Rally, "Rally");
+
         _statusLabel = new Label
         {
             Text = "Loading prototype...",
@@ -130,6 +148,31 @@ public partial class BattleHud : CanvasLayer
         button.Pressed += () => TacticSelected?.Invoke(tactic);
         row.AddChild(button);
         _tacticButtons[tactic] = button;
+    }
+
+    private void AddSkillButton(HBoxContainer row, BattleSkill skill, string text)
+    {
+        var button = new Button
+        {
+            Text = text,
+            CustomMinimumSize = new Vector2(118.0f, 44.0f),
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        button.AddThemeFontSizeOverride("font_size", 18);
+        button.Pressed += () => SkillSelected?.Invoke(skill);
+        row.AddChild(button);
+        _skillButtons[skill] = button;
+    }
+
+    private void SetSkillButtonState(BattleSkill skill, string label, float cooldown)
+    {
+        if (!_skillButtons.TryGetValue(skill, out var button))
+        {
+            return;
+        }
+
+        button.Disabled = cooldown > 0.05f;
+        button.Text = cooldown > 0.05f ? $"{label} {cooldown:0.0}" : label;
     }
 
     private void BuildResultPanel()

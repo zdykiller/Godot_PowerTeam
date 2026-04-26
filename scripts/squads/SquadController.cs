@@ -460,6 +460,52 @@ public partial class SquadController : Node3D
         _velocity += direction.Normalized() * strength;
     }
 
+    public void ApplyChargeOrder()
+    {
+        if (!IsAlive || Role != SquadRole.Lancer)
+        {
+            return;
+        }
+
+        _chargePower = Mathf.Max(_chargePower, 0.82f);
+        _formationIntent = Mathf.Max(_formationIntent, 0.45f);
+        _lancerCooldown = 0.0f;
+        _flashTimer = 0.28f;
+        _statusText = "Charge Order";
+        UpdateLabel();
+    }
+
+    public void ApplyVolleyOrder()
+    {
+        if (!IsAlive || Role != SquadRole.Archer)
+        {
+            return;
+        }
+
+        _aimFocus = 1.0f;
+        _volleyCooldown = 0.0f;
+        _formationIntent = Mathf.Max(_formationIntent, 0.6f);
+        _flashTimer = 0.24f;
+        _statusText = "Volley Order";
+        UpdateLabel();
+    }
+
+    public float ApplyRally(float moraleAmount)
+    {
+        if (!IsAlive || moraleAmount <= 0.0f)
+        {
+            return 0.0f;
+        }
+
+        var before = _morale;
+        _morale = Mathf.Min(MaxMorale, _morale + moraleAmount);
+        _flashTimer = 0.2f;
+        _statusText = "Rallied";
+        RefreshVisualFeedback();
+        UpdateLabel();
+        return _morale - before;
+    }
+
     public void PlayImpactReaction(Vector3 worldDirection)
     {
         if (_unitNodes.Count == 0 || worldDirection.LengthSquared() <= 0.001f)
