@@ -3,7 +3,7 @@ using Godot;
 public partial class CommandWheelControl : Control
 {
     [Export]
-    public float Radius = 90.0f;
+    public float Radius = 125.0f;
 
     [Export]
     public Color BaseColor = new(0.08f, 0.08f, 0.10f, 0.65f);
@@ -50,9 +50,9 @@ public partial class CommandWheelControl : Control
         }
 
         DrawCircle(_origin, Radius, BaseColor);
-        DrawArc(_origin, Radius, 0.0f, Mathf.Tau, 48, AccentColor, 3.0f, true);
-        DrawLine(_origin, _current, AccentColor, 4.0f, true);
-        DrawCircle(_current, 18.0f, AccentColor);
+        DrawArc(_origin, Radius, 0.0f, Mathf.Tau, 56, AccentColor, 4.0f, true);
+        DrawLine(_origin, _current, AccentColor, 6.0f, true);
+        DrawCircle(_current, 24.0f, AccentColor);
     }
 
     private void HandleMouseButton(InputEventMouseButton mouseButton)

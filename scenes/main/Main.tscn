@@ -401,16 +401,17 @@ script = ExtResource("3_djdo4")
 [node name="HudPanel" type="PanelContainer" parent="UI"]
 offset_left = 24.0
 offset_top = 24.0
-offset_right = 364.0
-offset_bottom = 230.0
+offset_right = 600.0
+offset_bottom = 430.0
 
 [node name="Margin" type="MarginContainer" parent="UI/HudPanel"]
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 18
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 18
 
 [node name="VBox" type="VBoxContainer" parent="UI/HudPanel/Margin"]
 
 [node name="StatusLabel" type="Label" parent="UI/HudPanel/Margin/VBox"]
 text = "Loading prototype..."
+theme_override_font_sizes/font_size = 20
