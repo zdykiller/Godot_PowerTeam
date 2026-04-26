@@ -145,6 +145,7 @@ public partial class BattleHud : CanvasLayer
         _hudRoot = new Control
         {
             Name = "BattleHudRoot",
+            MouseFilter = Control.MouseFilterEnum.Pass,
         };
         _hudRoot.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(_hudRoot);
@@ -159,6 +160,7 @@ public partial class BattleHud : CanvasLayer
         var panel = new PanelContainer
         {
             Name = "TopBar",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
             OffsetLeft = 24.0f,
             OffsetTop = 18.0f,
             OffsetRight = 1576.0f,
@@ -168,6 +170,7 @@ public partial class BattleHud : CanvasLayer
         _hudRoot.AddChild(panel);
 
         var margin = new MarginContainer();
+        margin.MouseFilter = Control.MouseFilterEnum.Ignore;
         margin.AddThemeConstantOverride("margin_left", 22);
         margin.AddThemeConstantOverride("margin_top", 12);
         margin.AddThemeConstantOverride("margin_right", 22);
@@ -175,6 +178,7 @@ public partial class BattleHud : CanvasLayer
         panel.AddChild(margin);
 
         var row = new HBoxContainer();
+        row.MouseFilter = Control.MouseFilterEnum.Ignore;
         row.AddThemeConstantOverride("separation", 24);
         margin.AddChild(row);
 
@@ -182,6 +186,7 @@ public partial class BattleHud : CanvasLayer
         {
             Text = "POWER TEAM",
             CustomMinimumSize = new Vector2(260.0f, 0.0f),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         title.AddThemeFontSizeOverride("font_size", 30);
         row.AddChild(title);
@@ -191,6 +196,7 @@ public partial class BattleHud : CanvasLayer
             Text = "3v3 Squad Battle  |  Select allied squad, tap ground to move, tap enemy to attack",
             VerticalAlignment = VerticalAlignment.Center,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         objective.AddThemeFontSizeOverride("font_size", 20);
         row.AddChild(objective);
@@ -201,6 +207,7 @@ public partial class BattleHud : CanvasLayer
         var panel = new PanelContainer
         {
             Name = "TacticPanel",
+            MouseFilter = Control.MouseFilterEnum.Pass,
             OffsetLeft = 24.0f,
             OffsetTop = 112.0f,
             OffsetRight = 286.0f,
@@ -210,6 +217,7 @@ public partial class BattleHud : CanvasLayer
         _hudRoot.AddChild(panel);
 
         var margin = new MarginContainer();
+        margin.MouseFilter = Control.MouseFilterEnum.Pass;
         margin.AddThemeConstantOverride("margin_left", 16);
         margin.AddThemeConstantOverride("margin_top", 16);
         margin.AddThemeConstantOverride("margin_right", 16);
@@ -217,12 +225,14 @@ public partial class BattleHud : CanvasLayer
         panel.AddChild(margin);
 
         var box = new VBoxContainer();
+        box.MouseFilter = Control.MouseFilterEnum.Pass;
         box.AddThemeConstantOverride("separation", 12);
         margin.AddChild(box);
 
         var title = new Label
         {
             Text = "TACTICS",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         title.AddThemeFontSizeOverride("font_size", 22);
         box.AddChild(title);
@@ -238,6 +248,7 @@ public partial class BattleHud : CanvasLayer
         var panel = new PanelContainer
         {
             Name = "StatusPanel",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
             OffsetLeft = 24.0f,
             OffsetTop = 650.0f,
             OffsetRight = 1576.0f,
@@ -247,6 +258,7 @@ public partial class BattleHud : CanvasLayer
         _hudRoot.AddChild(panel);
 
         var margin = new MarginContainer();
+        margin.MouseFilter = Control.MouseFilterEnum.Ignore;
         margin.AddThemeConstantOverride("margin_left", 18);
         margin.AddThemeConstantOverride("margin_top", 14);
         margin.AddThemeConstantOverride("margin_right", 18);
@@ -257,6 +269,7 @@ public partial class BattleHud : CanvasLayer
         {
             Text = "Loading prototype...",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _statusLabel.AddThemeFontSizeOverride("font_size", 18);
         margin.AddChild(_statusLabel);
