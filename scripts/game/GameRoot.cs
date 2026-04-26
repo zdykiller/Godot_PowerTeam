@@ -27,7 +27,7 @@ public partial class GameRoot : Node3D
     private readonly List<string> _battleLog = [];
     private readonly Dictionary<SquadController, ManualOrder> _manualOrders = [];
     private string _combatText = "Destroy the enemy base.";
-    private string _gameState = "Battle";
+    private string _gameState = "Menu";
     private float _meleeUiTimer;
     private float _chargeOrderCooldown;
     private float _volleyOrderCooldown;
@@ -108,6 +108,7 @@ public partial class GameRoot : Node3D
         _hud = GetNode<BattleHud>("UI");
         _hud.TacticSelected += SetAllyTactic;
         _hud.SkillSelected += TriggerBattleSkill;
+        _hud.StartRequested += StartBattle;
         _hud.RestartRequested += RestartBattle;
         _camera = GetViewport().GetCamera3D() ?? GetNodeOrNull<Camera3D>("CameraRig/Camera3D");
 
@@ -766,6 +767,20 @@ public partial class GameRoot : Node3D
         _hud.ShowResult(result, summary);
     }
 
+    private void StartBattle()
+    {
+        if (_gameState != "Menu")
+        {
+            return;
+        }
+
+        _gameState = "Battle";
+        _combatText = "Battle started. Select a squad and issue orders.";
+        AddBattleEvent("battle: started");
+        _hud.ShowBattleHud();
+        UpdateHud();
+    }
+
     private void RestartBattle()
     {
         GetTree().ReloadCurrentScene();
@@ -785,27 +800,15 @@ public partial class GameRoot : Node3D
 
         _hud.SetStatusLines(
             [
-                $"Power Team - {_gameState}",
-                "Select allied squad, then tap ground or enemy",
-                "Skills appear above selected squad",
-                $"Current tactic: {_allyTactic}",
-                $"Orders CD: Charge {_chargeOrderCooldown:0.0}  Volley {_volleyOrderCooldown:0.0}  Rally {_rallyOrderCooldown:0.0}",
-                "Win: destroy enemy base",
-                playerBase?.GetStatusText() ?? "PlayerBase missing",
-                enemyBase?.GetStatusText() ?? "EnemyBase missing",
-                "",
-                $"Selected: {selected.Name} | {selectedOrder}",
+                $"STATE: {_gameState}    TACTIC: {_allyTactic}    OBJECTIVE: Destroy enemy base",
+                $"BASES: {playerBase?.GetStatusText() ?? "PlayerBase missing"}    |    {enemyBase?.GetStatusText() ?? "EnemyBase missing"}",
+                $"SELECTED: {selected.Name}    ORDER: {selectedOrder}",
                 selected.BuildStatusReport(),
-                _combatText,
-                "",
-                "Battle Log:",
-                .. _battleLog,
-                "",
-                "Allied Squads:",
-                .. _squads.Where(squad => squad.TeamId == 0).Select(squad => squad.GetStatusText()),
-                "",
-                "Enemy Squads:",
-                .. _squads.Where(squad => squad.TeamId == 1).Select(squad => squad.GetStatusText()),
+                $"SKILLS: Charge {_chargeOrderCooldown:0.0}s    Volley {_volleyOrderCooldown:0.0}s    Rally {_rallyOrderCooldown:0.0}s",
+                $"COMBAT: {_combatText}",
+                $"ALLIES: {string.Join("  |  ", _squads.Where(squad => squad.TeamId == 0).Select(squad => squad.GetStatusText()))}",
+                $"ENEMIES: {string.Join("  |  ", _squads.Where(squad => squad.TeamId == 1).Select(squad => squad.GetStatusText()))}",
+                $"LOG: {string.Join("    /    ", _battleLog.Take(4))}",
             ]
         );
 
