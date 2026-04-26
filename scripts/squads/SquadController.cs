@@ -27,6 +27,30 @@ public partial class SquadController : Node3D
     public SquadRole Role = SquadRole.Lancer;
 
     [Export]
+    public int TeamId = 0;
+
+    [Export]
+    public bool IsPlayerControlled;
+
+    [Export]
+    public float MaxHealth = 100.0f;
+
+    [Export]
+    public float HitRadius = 1.45f;
+
+    [Export]
+    public float RespawnDelay = 5.0f;
+
+    [Export]
+    public float BaseDamageOnDefeat = 35.0f;
+
+    [Export]
+    public float BaseAttackDamagePerSecond = 8.0f;
+
+    [Export]
+    public float BaseAttackRange = 3.0f;
+
+    [Export]
     public float MoveSpeed = 8.0f;
 
     [Export]
@@ -94,19 +118,27 @@ public partial class SquadController : Node3D
     private float _volleyCooldown;
     private float _lancerCooldown;
     private float _flashTimer;
+    private float _health;
+    private float _respawnTimer;
+    private Vector3 _spawnPosition;
     private string _statusText = "Idle";
 
     public bool IsSelected { get; private set; }
+    public bool IsAlive => _health > 0.0f;
     public Vector3 FacingDirection => -GlobalTransform.Basis.Z;
     public float ChargePower => _chargePower;
     public float AimFocus => _aimFocus;
     public float CurrentSpeed => _velocity.Length();
+    public float Radius => HitRadius;
+    public float Health => _health;
 
     public override void _Ready()
     {
         _stateLabel = GetNodeOrNull<Label3D>("StateLabel");
         _bodyMesh = GetNodeOrNull<MeshInstance3D>("Body");
         _unitsRoot = GetNodeOrNull<Node3D>("Units");
+        _spawnPosition = GlobalPosition;
+        _health = MaxHealth;
         BuildVisualUnits();
         _volleyCooldown = VolleyInterval;
         UpdateLabel();
@@ -117,6 +149,17 @@ public partial class SquadController : Node3D
         if (_flashTimer > 0.0f)
         {
             _flashTimer = Mathf.Max(0.0f, _flashTimer - (float)delta);
+        }
+
+        if (!IsAlive)
+        {
+            _respawnTimer = Mathf.Max(0.0f, _respawnTimer - (float)delta);
+            if (_respawnTimer <= 0.0f)
+            {
+                Respawn();
+            }
+            UpdateLabel();
+            return;
         }
 
         if (_bodyMesh?.Mesh != null)
@@ -146,6 +189,11 @@ public partial class SquadController : Node3D
             LancerDamage = LancerImpactDamage,
         };
 
+        if (!IsAlive)
+        {
+            return action;
+        }
+
         _lancerCooldown = Mathf.Max(0.0f, _lancerCooldown - delta);
         switch (Role)
         {
@@ -168,6 +216,10 @@ public partial class SquadController : Node3D
         builder.Append(Role);
         builder.Append(" | ");
         builder.Append(_statusText);
+        builder.Append(" | HP ");
+        builder.Append(Mathf.CeilToInt(_health));
+        builder.Append("/");
+        builder.Append(Mathf.CeilToInt(MaxHealth));
         builder.Append(" | Speed ");
         builder.Append(_velocity.Length().ToString("0.0"));
 
@@ -183,6 +235,45 @@ public partial class SquadController : Node3D
         }
 
         return builder.ToString();
+    }
+
+    public bool ApplyDamage(float damage)
+    {
+        if (!IsAlive)
+        {
+            return false;
+        }
+
+        _health = Mathf.Max(0.0f, _health - damage);
+        _flashTimer = 0.25f;
+        if (_health <= 0.0f)
+        {
+            Die();
+            return true;
+        }
+
+        UpdateLabel();
+        return false;
+    }
+
+    public void AddKnockback(Vector3 direction, float strength)
+    {
+        if (!IsAlive || direction.LengthSquared() <= 0.001f)
+        {
+            return;
+        }
+
+        _velocity += direction.Normalized() * strength;
+    }
+
+    public string GetStatusText()
+    {
+        if (IsAlive)
+        {
+            return $"{Name}: {Mathf.CeilToInt(_health)}/{Mathf.CeilToInt(MaxHealth)}";
+        }
+
+        return $"{Name}: Down ({_respawnTimer:0.0}s)";
     }
 
     private void SimulateLancer(float delta, Vector2 command, bool active, ref CombatAction action)
@@ -359,6 +450,41 @@ public partial class SquadController : Node3D
             return;
         }
 
-        _stateLabel.Text = $"{(IsSelected ? "> " : "")}{Role}\n{_statusText}";
+        _stateLabel.Text = $"{(IsSelected ? "> " : "")}{Role} T{TeamId}\n{_statusText}\nHP {Mathf.CeilToInt(_health)}";
+    }
+
+    private void Die()
+    {
+        _velocity = Vector3.Zero;
+        _chargePower = 0.0f;
+        _aimFocus = 0.0f;
+        _formationIntent = 0.0f;
+        _respawnTimer = RespawnDelay;
+        _statusText = "Broken";
+        SetVisualAlive(false);
+        UpdateLabel();
+    }
+
+    private void Respawn()
+    {
+        _health = MaxHealth;
+        _respawnTimer = 0.0f;
+        GlobalPosition = _spawnPosition;
+        _statusText = "Regrouped";
+        SetVisualAlive(true);
+        UpdateLabel();
+    }
+
+    private void SetVisualAlive(bool alive)
+    {
+        if (_bodyMesh != null)
+        {
+            _bodyMesh.Visible = false;
+        }
+
+        foreach (var unit in _unitNodes)
+        {
+            unit.Visible = alive;
+        }
     }
 }

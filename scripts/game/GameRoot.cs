@@ -7,16 +7,11 @@ public partial class GameRoot : Node3D
     private CommandWheelControl _wheel;
     private Label _hudLabel;
     private SquadController[] _squads = [];
-    private TargetDummy[] _targets = [];
-    private ControlPoint _controlPoint;
+    private BaseCore[] _bases = [];
     private Node3D _debugRoot;
-    private int _selectedIndex;
-    private string _combatText = "No combat yet";
-    private int _targetsBroken;
-    private int _comboCount;
-    private int _playerScore;
-    private int _enemyScore;
-    private string _objectiveText = "Hold the point or break enemies.";
+    private SquadController _playerSquad;
+    private string _combatText = "Destroy the enemy base.";
+    private string _gameState = "Battle";
 
     [Export]
     public float EffectLifetime = 0.65f;
@@ -28,22 +23,15 @@ public partial class GameRoot : Node3D
     public float VolleyBeamSpacing = 0.35f;
 
     [Export]
-    public int ScoreToWin = 100;
+    public float AiEngageRange = 7.0f;
 
     [Export]
-    public float CaptureScorePerSecond = 7.0f;
-
-    [Export]
-    public float EnemyCaptureScorePerSecond = 5.0f;
-
-    private float _playerScoreRemainder;
-    private float _enemyScoreRemainder;
+    public float AiCommandStrength = 1.0f;
 
     public override void _Ready()
     {
         _wheel = GetNode<CommandWheelControl>("UI/CommandWheel");
         _hudLabel = GetNode<Label>("UI/HudPanel/Margin/VBox/StatusLabel");
-        _controlPoint = GetNodeOrNull<ControlPoint>("ControlPoint");
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
         if (_debugRoot == null)
         {
@@ -51,248 +39,361 @@ public partial class GameRoot : Node3D
             AddChild(_debugRoot);
         }
 
-        var squadRoot = GetNode<Node>("Squads");
-        _squads = squadRoot.GetChildren().OfType<SquadController>().ToArray();
-        var targetRoot = GetNode<Node>("Targets");
-        _targets = targetRoot.GetChildren().OfType<TargetDummy>().ToArray();
+        _squads = GetNode<Node>("Squads").GetChildren().OfType<SquadController>().ToArray();
+        _bases = GetNode<Node>("Bases").GetChildren().OfType<BaseCore>().ToArray();
+        _playerSquad = _squads.FirstOrDefault(squad => squad.IsPlayerControlled) ?? _squads.FirstOrDefault(squad => squad.TeamId == 0);
 
-        if (_squads.Length == 0)
+        if (_playerSquad == null || _bases.Length < 2)
         {
-            _hudLabel.Text = "No squads configured.";
+            _hudLabel.Text = "Battle scene missing player squad or bases.";
             return;
         }
 
-        SetSelectedSquad(0);
+        SetSelectedSquad(_playerSquad);
         UpdateHud();
-    }
-
-
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo && keyEvent.Keycode == Key.Tab)
-        {
-            SetSelectedSquad((_selectedIndex + 1) % _squads.Length);
-            GetViewport().SetInputAsHandled();
-        }
     }
 
     public override void _Process(double delta)
     {
-        for (var index = 0; index < _squads.Length; index++)
+        if (_playerSquad == null || _gameState != "Battle")
         {
-            var isSelected = index == _selectedIndex;
-            var command = isSelected ? _wheel.CommandVector : Vector2.Zero;
-            var active = isSelected && _wheel.IsActive;
-            var action = _squads[index].Simulate((float)delta, command, active);
+            UpdateHud();
+            return;
+        }
 
+        foreach (var squad in _squads)
+        {
+            var command = Vector2.Zero;
+            var active = false;
+
+            if (squad == _playerSquad)
+            {
+                command = _wheel.CommandVector;
+                active = _wheel.IsActive;
+            }
+            else
+            {
+                command = BuildAiCommand(squad);
+                active = command.LengthSquared() > 0.001f;
+            }
+
+            var action = squad.Simulate((float)delta, command, active);
             if (action.LancerImpact)
             {
-                ResolveLancerImpact(_squads[index], action);
+                ResolveLancerImpact(squad, action);
             }
 
             if (action.VolleyFired)
             {
-                ResolveVolley(_squads[index], action);
+                ResolveVolley(squad, action);
             }
         }
 
-        SimulateEnemies((float)delta);
-        UpdateControlPointScoring((float)delta);
+        ResolveBaseAttacks((float)delta);
+        CheckVictory();
         UpdateHud();
-        ClearExpiredEffectTimers(delta);
+        ClearExpiredEffectTimers();
     }
 
-    private void SetSelectedSquad(int index)
+    private void SetSelectedSquad(SquadController selected)
     {
-        _selectedIndex = index;
-        for (var squadIndex = 0; squadIndex < _squads.Length; squadIndex++)
+        foreach (var squad in _squads)
         {
-            _squads[squadIndex].SetSelected(squadIndex == _selectedIndex);
+            squad.SetSelected(squad == selected);
         }
+    }
+
+    private Vector2 BuildAiCommand(SquadController squad)
+    {
+        if (!squad.IsAlive)
+        {
+            return Vector2.Zero;
+        }
+
+        var nearestEnemy = FindNearestEnemySquad(squad, AiEngageRange);
+        var targetPosition = nearestEnemy?.GlobalPosition ?? GetEnemyBase(squad.TeamId)?.GlobalPosition ?? squad.GlobalPosition;
+        var toTarget = targetPosition - squad.GlobalPosition;
+        toTarget.Y = 0.0f;
+
+        if (toTarget.LengthSquared() <= 0.05f)
+        {
+            return Vector2.Zero;
+        }
+
+        var direction = toTarget.Normalized();
+        var strength = squad.Role == SquadController.SquadRole.Archer && nearestEnemy != null ? 0.45f : AiCommandStrength;
+        return new Vector2(direction.X, direction.Z) * strength;
     }
 
     private void ResolveLancerImpact(SquadController squad, SquadController.CombatAction action)
     {
-        var best = FindClosestTarget(squad.GlobalPosition, action.LancerRange, squad.FacingDirection, action.LancerArcRadians, _targets);
-        if (best == null)
+        if (!squad.IsAlive)
         {
-            _combatText = $"{squad.Name} impact missed.";
+            return;
+        }
+
+        var target = FindClosestEnemyInArc(squad, action.LancerRange, action.LancerArcRadians);
+        if (target == null)
+        {
+            var enemyBase = GetEnemyBase(squad.TeamId);
+            if (enemyBase != null && IsBaseInRange(squad, enemyBase, action.LancerRange, action.LancerArcRadians))
+            {
+                DamageBase(enemyBase, action.LancerDamage * 0.7f, squad.Name);
+                SpawnLancerTrail(squad.GlobalPosition, enemyBase.GlobalPosition, new Color(1.0f, 0.55f, 0.15f, 1.0f));
+                return;
+            }
+
+            _combatText = $"{squad.Name} charge missed.";
             SpawnLancerTrail(
                 squad.GlobalPosition,
                 squad.GlobalPosition + squad.FacingDirection * action.LancerRange,
-                new Color(0.93f, 0.55f, 0.06f, 1f)
+                new Color(0.93f, 0.55f, 0.06f, 1.0f)
             );
             return;
         }
 
-        var targetPos = best.GlobalPosition;
-        var defeated = best.ApplyDamage(action.LancerDamage, squad.Name);
-        best.AddKnockback(squad.FacingDirection, 7.5f + squad.CurrentSpeed * 0.35f);
-        RegisterHit(defeated, best.ScoreValue);
-        _combatText = defeated ? $"{squad.Name} shattered {best.Name}" : $"{squad.Name} impaled {best.Name}";
+        var targetPos = target.GlobalPosition;
+        var defeated = target.ApplyDamage(action.LancerDamage);
+        target.AddKnockback(squad.FacingDirection, 7.5f + squad.CurrentSpeed * 0.35f);
+        if (defeated)
+        {
+            DamageBase(GetBase(target.TeamId), target.BaseDamageOnDefeat, target.Name);
+        }
+
+        _combatText = defeated ? $"{squad.Name} broke {target.Name}" : $"{squad.Name} charged {target.Name}";
         SpawnImpactPoint(targetPos);
-        SpawnLancerTrail(
-            squad.GlobalPosition,
-            targetPos,
-            new Color(0.98f, 0.32f, 0.15f, 1f)
-        );
+        SpawnLancerTrail(squad.GlobalPosition, targetPos, new Color(0.98f, 0.32f, 0.15f, 1.0f));
     }
 
     private void ResolveVolley(SquadController squad, SquadController.CombatAction action)
     {
-        var volleyTargets = FindTargetsInArc(
-            squad.GlobalPosition,
-            action.VolleyRange,
-            squad.FacingDirection,
-            action.VolleyArcRadians,
-            _targets
-        )
-        .Take(action.VolleyTargetLimit <= 0 ? int.MaxValue : action.VolleyTargetLimit)
-        .ToArray();
-
-        if (volleyTargets.Length == 0)
+        if (!squad.IsAlive)
         {
-            _combatText = $"{squad.Name} volley empty.";
+            return;
+        }
+
+        var targets = FindEnemiesInArc(squad, action.VolleyRange, action.VolleyArcRadians)
+            .Take(action.VolleyTargetLimit <= 0 ? int.MaxValue : action.VolleyTargetLimit)
+            .ToArray();
+
+        if (targets.Length == 0)
+        {
+            var enemyBase = GetEnemyBase(squad.TeamId);
+            if (enemyBase != null && IsBaseInRange(squad, enemyBase, action.VolleyRange, action.VolleyArcRadians))
+            {
+                DamageBase(enemyBase, action.VolleyDamage * 0.45f, squad.Name);
+                SpawnVolleyBeam(
+                    squad.GlobalPosition + Vector3.Up * VolleyBeamHeight,
+                    enemyBase.GlobalPosition + Vector3.Up * VolleyBeamHeight,
+                    new Color(0.9f, 0.9f, 0.3f, 1.0f),
+                    false
+                );
+                return;
+            }
+
+            _combatText = $"{squad.Name} volley missed.";
             SpawnVolleyBeam(
                 squad.GlobalPosition,
                 squad.GlobalPosition + squad.FacingDirection * action.VolleyRange,
-                new Color(0.4f, 0.95f, 1f, 1f),
+                new Color(0.4f, 0.95f, 1.0f, 1.0f),
                 true
             );
             return;
         }
 
-        var first = volleyTargets[0];
         SpawnVolleyBeam(
             squad.GlobalPosition + Vector3.Up * VolleyBeamHeight,
-            first.GlobalPosition + Vector3.Up * VolleyBeamHeight,
-            new Color(0.9f, 0.9f, 0.3f, 1f),
+            targets[0].GlobalPosition + Vector3.Up * VolleyBeamHeight,
+            new Color(0.9f, 0.9f, 0.3f, 1.0f),
             false
         );
 
-        foreach (var target in volleyTargets)
+        foreach (var target in targets)
         {
             var pushDirection = target.GlobalPosition - squad.GlobalPosition;
-            var defeated = target.ApplyDamage(action.VolleyDamage, squad.Name);
+            var defeated = target.ApplyDamage(action.VolleyDamage);
             target.AddKnockback(pushDirection, defeated ? 4.0f : 2.0f);
-            RegisterHit(defeated, target.ScoreValue);
+            if (defeated)
+            {
+                DamageBase(GetBase(target.TeamId), target.BaseDamageOnDefeat, target.Name);
+            }
             SpawnImpactPoint(target.GlobalPosition);
         }
 
-        _combatText = $"{squad.Name} volleyed {volleyTargets.Length} target(s).";
+        _combatText = $"{squad.Name} volleyed {targets.Length} squad(s).";
     }
 
-    private void UpdateHud()
+    private void ResolveBaseAttacks(float delta)
     {
-        if (_squads.Length == 0)
+        foreach (var squad in _squads)
+        {
+            if (!squad.IsAlive)
+            {
+                continue;
+            }
+
+            var enemyBase = GetEnemyBase(squad.TeamId);
+            if (enemyBase == null || !enemyBase.IsAlive)
+            {
+                continue;
+            }
+
+            var distance = FlatDistance(squad.GlobalPosition, enemyBase.GlobalPosition);
+            if (distance <= squad.BaseAttackRange + enemyBase.Radius)
+            {
+                DamageBase(enemyBase, squad.BaseAttackDamagePerSecond * delta, squad.Name);
+            }
+        }
+    }
+
+    private void DamageBase(BaseCore targetBase, float damage, string source)
+    {
+        if (targetBase == null || !targetBase.IsAlive)
         {
             return;
         }
 
-        var selected = _squads[_selectedIndex];
+        var destroyed = targetBase.ApplyDamage(damage);
+        _combatText = destroyed ? $"{source} destroyed {targetBase.Name}" : $"{source} hit {targetBase.Name}";
+        SpawnImpactPoint(targetBase.GlobalPosition);
+    }
+
+    private void CheckVictory()
+    {
+        var playerBase = GetBase(0);
+        var enemyBase = GetBase(1);
+
+        if (playerBase != null && !playerBase.IsAlive)
+        {
+            _gameState = "Defeat";
+            _combatText = "Defeat: your base fell.";
+        }
+        else if (enemyBase != null && !enemyBase.IsAlive)
+        {
+            _gameState = "Victory";
+            _combatText = "Victory: enemy base destroyed.";
+        }
+    }
+
+    private void UpdateHud()
+    {
+        if (_playerSquad == null)
+        {
+            return;
+        }
+
+        var playerBase = GetBase(0);
+        var enemyBase = GetBase(1);
+
         _hudLabel.Text = string.Join(
             "\n",
             [
-                "Power Team Prototype",
-                "LMB drag: command wheel",
-                "Tab: switch squad",
-                $"Score: Player {_playerScore}/{ScoreToWin} | Enemy {_enemyScore}/{ScoreToWin}",
-                _objectiveText,
-                $"Selected: {selected.Name}",
-                selected.BuildStatusReport(),
+                $"Power Team - {_gameState}",
+                "LMB drag: command squad intent",
+                "Win: destroy enemy base",
+                playerBase?.GetStatusText() ?? "PlayerBase missing",
+                enemyBase?.GetStatusText() ?? "EnemyBase missing",
+                "",
+                $"Player: {_playerSquad.Name}",
+                _playerSquad.BuildStatusReport(),
                 _combatText,
-                $"Broken targets: {_targetsBroken} | Combo: {_comboCount}",
                 "",
-                "Target Status:",
-                .. _targets.Select(target => target.GetStatusText()),
+                "Allied Squads:",
+                .. _squads.Where(squad => squad.TeamId == 0).Select(squad => squad.GetStatusText()),
                 "",
-                "Goal: score by breaking enemies or holding the point",
-                "Lancer: drag hard to build charge and ram",
-                "Archer: light drag to aim, hard drag to move",
+                "Enemy Squads:",
+                .. _squads.Where(squad => squad.TeamId == 1).Select(squad => squad.GetStatusText()),
             ]
         );
     }
 
-    private TargetDummy FindClosestTarget(
-        Vector3 origin,
-        float range,
-        Vector3 forward,
-        float arcRad,
-        TargetDummy[] targets)
+    private SquadController FindNearestEnemySquad(SquadController seeker, float range)
     {
-        TargetDummy bestTarget = null;
-        var bestDistance = float.MaxValue;
-        var cosThreshold = Mathf.Cos(arcRad * 0.5f);
-        var minDot = -0.15f;
+        SquadController best = null;
+        var bestDistance = range;
 
-        foreach (var target in targets)
+        foreach (var squad in _squads)
         {
-            if (!target.IsAlive)
+            if (squad.TeamId == seeker.TeamId || !squad.IsAlive)
             {
                 continue;
             }
 
-            var toTarget = target.GlobalPosition - origin;
-            var distance = toTarget.Length();
-            if (distance > range + target.Radius)
-            {
-                continue;
-            }
-
-            if (toTarget.LengthSquared() > 0.0001f)
-            {
-                var direction = toTarget / distance;
-                var dot = direction.Dot(forward);
-                if (dot < cosThreshold || dot < minDot)
-                {
-                    continue;
-                }
-            }
-
+            var distance = FlatDistance(seeker.GlobalPosition, squad.GlobalPosition);
             if (distance < bestDistance)
             {
                 bestDistance = distance;
-                bestTarget = target;
+                best = squad;
             }
         }
 
-        return bestTarget;
+        return best;
     }
 
-    private TargetDummy[] FindTargetsInArc(
-        Vector3 origin,
-        float range,
-        Vector3 forward,
-        float arcRad,
-        TargetDummy[] targets)
+    private SquadController FindClosestEnemyInArc(SquadController seeker, float range, float arcRad)
     {
-        var list = new List<TargetDummy>();
+        return FindEnemiesInArc(seeker, range, arcRad).FirstOrDefault();
+    }
+
+    private SquadController[] FindEnemiesInArc(SquadController seeker, float range, float arcRad)
+    {
+        var list = new List<SquadController>();
         var cosThreshold = Mathf.Cos(arcRad * 0.5f);
 
-        foreach (var target in targets)
+        foreach (var squad in _squads)
         {
-            if (!target.IsAlive)
+            if (squad.TeamId == seeker.TeamId || !squad.IsAlive)
             {
                 continue;
             }
 
-            var toTarget = target.GlobalPosition - origin;
+            var toTarget = squad.GlobalPosition - seeker.GlobalPosition;
+            toTarget.Y = 0.0f;
             var distance = toTarget.Length();
-            if (distance > range + target.Radius || distance < 0.001f)
+            if (distance > range + squad.Radius || distance < 0.001f)
             {
                 continue;
             }
 
-            var direction = toTarget / distance;
-            if (direction.Dot(forward) < cosThreshold)
+            if (toTarget.Normalized().Dot(seeker.FacingDirection) < cosThreshold)
             {
                 continue;
             }
 
-            list.Add(target);
+            list.Add(squad);
         }
 
-        return [.. list.OrderBy(target => (target.GlobalPosition - origin).Length())];
+        return [.. list.OrderBy(squad => FlatDistance(seeker.GlobalPosition, squad.GlobalPosition))];
+    }
+
+    private bool IsBaseInRange(SquadController seeker, BaseCore targetBase, float range, float arcRad)
+    {
+        var toBase = targetBase.GlobalPosition - seeker.GlobalPosition;
+        toBase.Y = 0.0f;
+        var distance = toBase.Length();
+        if (distance > range + targetBase.Radius || distance < 0.001f)
+        {
+            return false;
+        }
+
+        return toBase.Normalized().Dot(seeker.FacingDirection) >= Mathf.Cos(arcRad * 0.5f);
+    }
+
+    private BaseCore GetBase(int teamId)
+    {
+        return _bases.FirstOrDefault(baseCore => baseCore.TeamId == teamId);
+    }
+
+    private BaseCore GetEnemyBase(int teamId)
+    {
+        return _bases.FirstOrDefault(baseCore => baseCore.TeamId != teamId);
+    }
+
+    private float FlatDistance(Vector3 a, Vector3 b)
+    {
+        var delta = a - b;
+        delta.Y = 0.0f;
+        return delta.Length();
     }
 
     private void SpawnLancerTrail(Vector3 origin, Vector3 hitPoint, Color color)
@@ -324,7 +425,7 @@ public partial class GameRoot : Node3D
 
     private void SpawnImpactPoint(Vector3 point)
     {
-        SpawnEffectPoint(point + Vector3.Up * 0.12f, 0.18f, new Color(1f, 0.2f, 0.2f, 1f), EffectLifetime);
+        SpawnEffectPoint(point + Vector3.Up * 0.12f, 0.18f, new Color(1.0f, 0.2f, 0.2f, 1.0f), EffectLifetime);
     }
 
     private void SpawnEffectPoint(Vector3 worldPos, float scale, Color color, float lifetime)
@@ -361,80 +462,7 @@ public partial class GameRoot : Node3D
         timer.Start();
     }
 
-    private void SimulateEnemies(float delta)
-    {
-        if (_controlPoint == null)
-        {
-            return;
-        }
-
-        foreach (var target in _targets)
-        {
-            target.SimulateAi(_controlPoint.GlobalPosition, delta);
-        }
-    }
-
-    private void UpdateControlPointScoring(float delta)
-    {
-        if (_controlPoint == null)
-        {
-            return;
-        }
-
-        var playerOnPoint = _squads.Any(squad => _controlPoint.Contains(squad.GlobalPosition));
-        var enemyOnPoint = _targets.Any(target => target.IsAlive && _controlPoint.Contains(target.GlobalPosition));
-
-        if (playerOnPoint && !enemyOnPoint)
-        {
-            AddScore(ref _playerScore, ref _playerScoreRemainder, CaptureScorePerSecond * delta);
-            _objectiveText = "Player is holding the point.";
-            _controlPoint.SetStatus("Player +", new Color(0.96f, 0.72f, 0.14f, 1.0f));
-            return;
-        }
-
-        if (enemyOnPoint && !playerOnPoint)
-        {
-            AddScore(ref _enemyScore, ref _enemyScoreRemainder, EnemyCaptureScorePerSecond * delta);
-            _objectiveText = "Enemies are scoring on the point.";
-            _controlPoint.SetStatus("Enemy +", new Color(0.9f, 0.15f, 0.12f, 1.0f));
-            return;
-        }
-
-        if (playerOnPoint && enemyOnPoint)
-        {
-            _objectiveText = "Point contested.";
-            _controlPoint.SetStatus("Contested", new Color(1.0f, 0.95f, 0.2f, 1.0f));
-            return;
-        }
-
-        _objectiveText = "Move onto the point or break enemies.";
-        _controlPoint.SetStatus("Neutral", new Color(0.8f, 0.8f, 0.8f, 1.0f));
-    }
-
-    private void AddScore(ref int score, ref float remainder, float amount)
-    {
-        remainder += amount;
-        var whole = Mathf.FloorToInt(remainder);
-        if (whole <= 0)
-        {
-            return;
-        }
-
-        score = Mathf.Min(ScoreToWin, score + whole);
-        remainder -= whole;
-    }
-
-    private void RegisterHit(bool defeated, int scoreValue)
-    {
-        _comboCount++;
-        if (defeated)
-        {
-            _targetsBroken++;
-            _playerScore = Mathf.Min(ScoreToWin, _playerScore + scoreValue);
-        }
-    }
-
-    private void ClearExpiredEffectTimers(double _delta)
+    private void ClearExpiredEffectTimers()
     {
         if (_debugRoot == null)
         {
@@ -444,12 +472,7 @@ public partial class GameRoot : Node3D
         var remove = new List<Node>();
         foreach (var child in _debugRoot.GetChildren())
         {
-            if (child is not MeshInstance3D mesh)
-            {
-                continue;
-            }
-
-            if (!mesh.Visible)
+            if (child is MeshInstance3D mesh && !mesh.Visible)
             {
                 remove.Add(child);
             }

@@ -5,6 +5,7 @@
 [ext_resource type="Script" path="res://scripts/input/CommandWheelControl.cs" id="3_djdo4"]
 [ext_resource type="Script" path="res://scripts/combat/TargetDummy.cs" id="4_hqf8h"]
 [ext_resource type="Script" path="res://scripts/game/ControlPoint.cs" id="5_yw86i"]
+[ext_resource type="Script" path="res://scripts/game/BaseCore.cs" id="6_c86hw"]
 
 [sub_resource type="Environment" id="Environment_rac1j"]
 background_mode = 1
@@ -29,6 +30,9 @@ size = Vector3(0.72, 0.22, 0.42)
 [sub_resource type="BoxMesh" id="BoxMesh_lane"]
 size = Vector3(0.08, 0.04, 40)
 
+[sub_resource type="BoxMesh" id="BoxMesh_base"]
+size = Vector3(5.5, 2.2, 2.6)
+
 [sub_resource type="SphereMesh" id="SphereMesh_q2j5k"]
 radius = 0.9
 
@@ -49,6 +53,9 @@ albedo_color = Color(0.96, 0.72, 0.14, 1)
 [sub_resource type="StandardMaterial3D" id="Material_archer"]
 albedo_color = Color(0.02, 0.92, 1, 1)
 
+[sub_resource type="StandardMaterial3D" id="Material_enemy"]
+albedo_color = Color(0.95, 0.18, 0.12, 1)
+
 [sub_resource type="StandardMaterial3D" id="Material_arrow"]
 albedo_color = Color(0.96, 0.96, 0.9, 1)
 
@@ -57,6 +64,12 @@ albedo_color = Color(0.831373, 0.2, 0.2, 1)
 
 [sub_resource type="StandardMaterial3D" id="Material_point"]
 albedo_color = Color(0.8, 0.8, 0.8, 0.55)
+
+[sub_resource type="StandardMaterial3D" id="Material_player_base"]
+albedo_color = Color(0.95, 0.74, 0.16, 1)
+
+[sub_resource type="StandardMaterial3D" id="Material_enemy_base"]
+albedo_color = Color(0.78, 0.08, 0.08, 1)
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_mhnd2")
@@ -70,12 +83,12 @@ shadow_enabled = true
 environment = SubResource("Environment_rac1j")
 
 [node name="CameraRig" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 17, 16)
+transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 23, 23)
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig"]
 current = true
 projection = 1
-size = 16.0
+size = 25.0
 
 [node name="Ground" type="Node3D" parent="."]
 
@@ -101,9 +114,11 @@ material_override = SubResource("Material_lane")
 [node name="Squads" type="Node3D" parent="."]
 
 [node name="LancerSquad" type="Node3D" parent="Squads"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.8, 0.9, 5)
 script = ExtResource("2_j36x3")
 Role = 0
+TeamId = 0
+IsPlayerControlled = true
 
 [node name="Body" type="MeshInstance3D" parent="Squads/LancerSquad"]
 mesh = SubResource("CapsuleMesh_fd0wr")
@@ -129,9 +144,10 @@ font_size = 40
 modulate = Color(0.968627, 0.835294, 0.341176, 1)
 
 [node name="ArcherSquad" type="Node3D" parent="Squads"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.5, 0.9, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 6)
 script = ExtResource("2_j36x3")
 Role = 1
+TeamId = 0
 MoveSpeed = 7.0
 
 [node name="Body" type="MeshInstance3D" parent="Squads/ArcherSquad"]
@@ -157,6 +173,158 @@ text = "Archer"
 billboard = 1
 font_size = 40
 modulate = Color(0.52549, 0.87451, 0.654902, 1)
+
+[node name="AllyLancer2" type="Node3D" parent="Squads"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.8, 0.9, 5)
+script = ExtResource("2_j36x3")
+Role = 0
+TeamId = 0
+
+[node name="Body" type="MeshInstance3D" parent="Squads/AllyLancer2"]
+mesh = SubResource("CapsuleMesh_fd0wr")
+material_override = SubResource("Material_lancer")
+
+[node name="Units" type="Node3D" parent="Squads/AllyLancer2"]
+
+[node name="FacingMarker" type="MeshInstance3D" parent="Squads/AllyLancer2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.05)
+mesh = SubResource("BoxMesh_arrow")
+material_override = SubResource("Material_arrow")
+
+[node name="FacingTip" type="MeshInstance3D" parent="Squads/AllyLancer2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.85)
+mesh = SubResource("BoxMesh_arrow_tip")
+material_override = SubResource("Material_arrow")
+
+[node name="StateLabel" type="Label3D" parent="Squads/AllyLancer2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
+text = "Ally Lancer"
+billboard = 1
+font_size = 40
+modulate = Color(0.968627, 0.835294, 0.341176, 1)
+
+[node name="EnemyLancer1" type="Node3D" parent="Squads"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4.8, 0.9, -8)
+script = ExtResource("2_j36x3")
+Role = 0
+TeamId = 1
+
+[node name="Body" type="MeshInstance3D" parent="Squads/EnemyLancer1"]
+mesh = SubResource("CapsuleMesh_fd0wr")
+material_override = SubResource("Material_enemy")
+
+[node name="Units" type="Node3D" parent="Squads/EnemyLancer1"]
+
+[node name="FacingMarker" type="MeshInstance3D" parent="Squads/EnemyLancer1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.05)
+mesh = SubResource("BoxMesh_arrow")
+material_override = SubResource("Material_arrow")
+
+[node name="FacingTip" type="MeshInstance3D" parent="Squads/EnemyLancer1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.85)
+mesh = SubResource("BoxMesh_arrow_tip")
+material_override = SubResource("Material_arrow")
+
+[node name="StateLabel" type="Label3D" parent="Squads/EnemyLancer1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
+text = "Enemy Lancer"
+billboard = 1
+font_size = 40
+modulate = Color(1, 0.35, 0.25, 1)
+
+[node name="EnemyArcher" type="Node3D" parent="Squads"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.9, -9)
+script = ExtResource("2_j36x3")
+Role = 1
+TeamId = 1
+MoveSpeed = 7.0
+
+[node name="Body" type="MeshInstance3D" parent="Squads/EnemyArcher"]
+mesh = SubResource("CapsuleMesh_fd0wr")
+material_override = SubResource("Material_enemy")
+scale = Vector3(0.85, 0.85, 0.85)
+
+[node name="Units" type="Node3D" parent="Squads/EnemyArcher"]
+
+[node name="FacingMarker" type="MeshInstance3D" parent="Squads/EnemyArcher"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.05)
+mesh = SubResource("BoxMesh_arrow")
+material_override = SubResource("Material_arrow")
+
+[node name="FacingTip" type="MeshInstance3D" parent="Squads/EnemyArcher"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.85)
+mesh = SubResource("BoxMesh_arrow_tip")
+material_override = SubResource("Material_arrow")
+
+[node name="StateLabel" type="Label3D" parent="Squads/EnemyArcher"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
+text = "Enemy Archer"
+billboard = 1
+font_size = 40
+modulate = Color(1, 0.35, 0.25, 1)
+
+[node name="EnemyLancer2" type="Node3D" parent="Squads"]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4.8, 0.9, -8)
+script = ExtResource("2_j36x3")
+Role = 0
+TeamId = 1
+
+[node name="Body" type="MeshInstance3D" parent="Squads/EnemyLancer2"]
+mesh = SubResource("CapsuleMesh_fd0wr")
+material_override = SubResource("Material_enemy")
+
+[node name="Units" type="Node3D" parent="Squads/EnemyLancer2"]
+
+[node name="FacingMarker" type="MeshInstance3D" parent="Squads/EnemyLancer2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.05)
+mesh = SubResource("BoxMesh_arrow")
+material_override = SubResource("Material_arrow")
+
+[node name="FacingTip" type="MeshInstance3D" parent="Squads/EnemyLancer2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, -1.85)
+mesh = SubResource("BoxMesh_arrow_tip")
+material_override = SubResource("Material_arrow")
+
+[node name="StateLabel" type="Label3D" parent="Squads/EnemyLancer2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
+text = "Enemy Lancer"
+billboard = 1
+font_size = 40
+modulate = Color(1, 0.35, 0.25, 1)
+
+[node name="Bases" type="Node3D" parent="."]
+
+[node name="PlayerBase" type="Node3D" parent="Bases"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 10)
+script = ExtResource("6_c86hw")
+TeamId = 0
+
+[node name="Body" type="MeshInstance3D" parent="Bases/PlayerBase"]
+mesh = SubResource("BoxMesh_base")
+material_override = SubResource("Material_player_base")
+
+[node name="StateLabel" type="Label3D" parent="Bases/PlayerBase"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
+text = "Player Base"
+billboard = 1
+font_size = 44
+modulate = Color(0.95, 0.74, 0.16, 1)
+
+[node name="EnemyBase" type="Node3D" parent="Bases"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -12)
+script = ExtResource("6_c86hw")
+TeamId = 1
+
+[node name="Body" type="MeshInstance3D" parent="Bases/EnemyBase"]
+mesh = SubResource("BoxMesh_base")
+material_override = SubResource("Material_enemy_base")
+
+[node name="StateLabel" type="Label3D" parent="Bases/EnemyBase"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
+text = "Enemy Base"
+billboard = 1
+font_size = 44
+modulate = Color(1, 0.35, 0.25, 1)
 
 [node name="ControlPoint" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -2.5)
