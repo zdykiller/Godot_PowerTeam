@@ -49,6 +49,11 @@ public partial class GameRoot : Node3D
             return;
         }
 
+        foreach (var squad in _squads)
+        {
+            squad.SetHomeBasePosition(GetBase(squad.TeamId)?.GlobalPosition ?? squad.GlobalPosition);
+        }
+
         SetSelectedSquad(_playerSquad);
         UpdateHud();
     }
@@ -153,7 +158,7 @@ public partial class GameRoot : Node3D
         }
 
         var targetPos = target.GlobalPosition;
-        var defeated = target.ApplyDamage(action.LancerDamage);
+        var defeated = target.ApplyDamage(action.LancerDamage, action.LancerMoraleDamage);
         target.AddKnockback(squad.FacingDirection, 7.5f + squad.CurrentSpeed * 0.35f);
         if (defeated)
         {
@@ -211,7 +216,7 @@ public partial class GameRoot : Node3D
         foreach (var target in targets)
         {
             var pushDirection = target.GlobalPosition - squad.GlobalPosition;
-            var defeated = target.ApplyDamage(action.VolleyDamage);
+            var defeated = target.ApplyDamage(action.VolleyDamage, action.VolleyMoraleDamage);
             target.AddKnockback(pushDirection, defeated ? 4.0f : 2.0f);
             if (defeated)
             {

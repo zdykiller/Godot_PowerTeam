@@ -7,11 +7,13 @@ public partial class SquadController : Node3D
     {
         public bool LancerImpact;
         public float LancerDamage;
+        public float LancerMoraleDamage;
         public float LancerRange;
         public float LancerArcRadians;
 
         public bool VolleyFired;
         public float VolleyDamage;
+        public float VolleyMoraleDamage;
         public float VolleyRange;
         public float VolleyArcRadians;
         public int VolleyTargetLimit;
@@ -36,10 +38,28 @@ public partial class SquadController : Node3D
     public float MaxHealth = 100.0f;
 
     [Export]
+    public float MaxMorale = 100.0f;
+
+    [Export]
+    public float Defense = 0.0f;
+
+    [Export]
     public float HitRadius = 1.45f;
 
     [Export]
-    public float RespawnDelay = 5.0f;
+    public float RegroupTime = 5.0f;
+
+    [Export]
+    public float RegroupRadius = 4.5f;
+
+    [Export]
+    public float RegroupHealthRatio = 0.65f;
+
+    [Export]
+    public float RegroupMoraleRatio = 0.85f;
+
+    [Export]
+    public float RoutMoveSpeedMultiplier = 1.15f;
 
     [Export]
     public float BaseDamageOnDefeat = 35.0f;
@@ -72,6 +92,9 @@ public partial class SquadController : Node3D
     public float LancerImpactDamage = 24.0f;
 
     [Export]
+    public float LancerImpactMoraleDamage = 34.0f;
+
+    [Export]
     public float LancerImpactRange = 2.4f;
 
     [Export]
@@ -85,6 +108,9 @@ public partial class SquadController : Node3D
 
     [Export]
     public float VolleyDamage = 12.0f;
+
+    [Export]
+    public float VolleyMoraleDamage = 16.0f;
 
     [Export]
     public float VolleyInterval = 0.9f;
@@ -128,18 +154,29 @@ public partial class SquadController : Node3D
     private float _lancerCooldown;
     private float _flashTimer;
     private float _health;
-    private float _respawnTimer;
+    private float _morale;
+    private float _regroupTimer;
     private Vector3 _spawnPosition;
+    private Vector3 _homeBasePosition;
     private string _statusText = "Idle";
+    private SquadState _state = SquadState.Active;
+
+    private enum SquadState
+    {
+        Active,
+        Routed,
+        Regrouping,
+    }
 
     public bool IsSelected { get; private set; }
-    public bool IsAlive => _health > 0.0f;
+    public bool IsAlive => _state == SquadState.Active;
     public Vector3 FacingDirection => -GlobalTransform.Basis.Z;
     public float ChargePower => _chargePower;
     public float AimFocus => _aimFocus;
     public float CurrentSpeed => _velocity.Length();
     public float Radius => HitRadius;
     public float Health => _health;
+    public float Morale => _morale;
 
     public override void _Ready()
     {
@@ -147,7 +184,9 @@ public partial class SquadController : Node3D
         _bodyMesh = GetNodeOrNull<MeshInstance3D>("Body");
         _unitsRoot = GetNodeOrNull<Node3D>("Units");
         _spawnPosition = GlobalPosition;
+        _homeBasePosition = _spawnPosition;
         _health = MaxHealth;
+        _morale = MaxMorale;
         BuildVisualUnits();
         _volleyCooldown = VolleyInterval;
         UpdateLabel();
@@ -160,12 +199,20 @@ public partial class SquadController : Node3D
             _flashTimer = Mathf.Max(0.0f, _flashTimer - (float)delta);
         }
 
-        if (!IsAlive)
+        if (_state == SquadState.Routed)
         {
-            _respawnTimer = Mathf.Max(0.0f, _respawnTimer - (float)delta);
-            if (_respawnTimer <= 0.0f)
+            SimulateRout((float)delta);
+            UpdateFormation((float)delta);
+            UpdateLabel();
+            return;
+        }
+
+        if (_state == SquadState.Regrouping)
+        {
+            _regroupTimer = Mathf.Max(0.0f, _regroupTimer - (float)delta);
+            if (_regroupTimer <= 0.0f)
             {
-                Respawn();
+                Regroup();
             }
             UpdateLabel();
             return;
@@ -195,7 +242,9 @@ public partial class SquadController : Node3D
             LancerRange = LancerImpactRange,
             VolleyRange = VolleyRange,
             VolleyDamage = VolleyDamage,
+            VolleyMoraleDamage = VolleyMoraleDamage,
             LancerDamage = LancerImpactDamage,
+            LancerMoraleDamage = LancerImpactMoraleDamage,
         };
 
         if (!IsAlive)
@@ -229,6 +278,10 @@ public partial class SquadController : Node3D
         builder.Append(Mathf.CeilToInt(_health));
         builder.Append("/");
         builder.Append(Mathf.CeilToInt(MaxHealth));
+        builder.Append(" | Morale ");
+        builder.Append(Mathf.CeilToInt(_morale));
+        builder.Append("/");
+        builder.Append(Mathf.CeilToInt(MaxMorale));
         builder.Append(" | Speed ");
         builder.Append(_velocity.Length().ToString("0.0"));
 
@@ -246,18 +299,25 @@ public partial class SquadController : Node3D
         return builder.ToString();
     }
 
-    public bool ApplyDamage(float damage)
+    public void SetHomeBasePosition(Vector3 position)
+    {
+        _homeBasePosition = position;
+    }
+
+    public bool ApplyDamage(float damage, float moraleDamage)
     {
         if (!IsAlive)
         {
             return false;
         }
 
-        _health = Mathf.Max(0.0f, _health - damage);
+        _health = Mathf.Max(0.0f, _health - Mathf.Max(1.0f, damage - Defense));
+        _morale = Mathf.Max(0.0f, _morale - moraleDamage);
         _flashTimer = 0.25f;
-        if (_health <= 0.0f)
+
+        if (_health <= 0.0f || _morale <= 0.0f)
         {
-            Die();
+            Rout(_health <= 0.0f ? "Broken" : "Routed");
             return true;
         }
 
@@ -279,10 +339,15 @@ public partial class SquadController : Node3D
     {
         if (IsAlive)
         {
-            return $"{Name}: {Mathf.CeilToInt(_health)}/{Mathf.CeilToInt(MaxHealth)}";
+            return $"{Name}: HP {Mathf.CeilToInt(_health)}/{Mathf.CeilToInt(MaxHealth)} M {Mathf.CeilToInt(_morale)}/{Mathf.CeilToInt(MaxMorale)}";
         }
 
-        return $"{Name}: Down ({_respawnTimer:0.0}s)";
+        if (_state == SquadState.Routed)
+        {
+            return $"{Name}: Routed";
+        }
+
+        return $"{Name}: Regrouping ({_regroupTimer:0.0}s)";
     }
 
     private void SimulateLancer(float delta, Vector2 command, bool active, ref CombatAction action)
@@ -405,7 +470,6 @@ public partial class SquadController : Node3D
             };
             var modelInstance = UnitModelScene.Instantiate<Node3D>();
             modelRoot.AddChild(modelInstance);
-            ApplyMaterialOverride(modelRoot, _bodyMesh.MaterialOverride);
             return modelRoot;
         }
 
@@ -432,24 +496,6 @@ public partial class SquadController : Node3D
         }
 
         unit.Scale = Vector3.One * GetUnitVisualScale() * pulse;
-    }
-
-    private void ApplyMaterialOverride(Node node, Material material)
-    {
-        if (material == null)
-        {
-            return;
-        }
-
-        if (node is MeshInstance3D mesh)
-        {
-            mesh.MaterialOverride = material;
-        }
-
-        foreach (var child in node.GetChildren())
-        {
-            ApplyMaterialOverride(child, material);
-        }
     }
 
     private void UpdateFormation(float delta)
@@ -511,26 +557,46 @@ public partial class SquadController : Node3D
             return;
         }
 
-        _stateLabel.Text = $"{(IsSelected ? "> " : "")}{Role} T{TeamId}\n{_statusText}\nHP {Mathf.CeilToInt(_health)}";
+        _stateLabel.Text = $"{(IsSelected ? "> " : "")}{Role} T{TeamId}\n{_statusText}\nHP {Mathf.CeilToInt(_health)} M {Mathf.CeilToInt(_morale)}";
     }
 
-    private void Die()
+    private void Rout(string reason)
     {
-        _velocity = Vector3.Zero;
         _chargePower = 0.0f;
         _aimFocus = 0.0f;
-        _formationIntent = 0.0f;
-        _respawnTimer = RespawnDelay;
-        _statusText = "Broken";
-        SetVisualAlive(false);
+        _formationIntent = 1.0f;
+        _state = SquadState.Routed;
+        _statusText = reason;
+        SetVisualAlive(true);
         UpdateLabel();
     }
 
-    private void Respawn()
+    private void SimulateRout(float delta)
     {
-        _health = MaxHealth;
-        _respawnTimer = 0.0f;
-        GlobalPosition = _spawnPosition;
+        var toHome = _homeBasePosition - GlobalPosition;
+        toHome.Y = 0.0f;
+
+        if (toHome.Length() <= RegroupRadius)
+        {
+            _state = SquadState.Regrouping;
+            _velocity = Vector3.Zero;
+            _regroupTimer = RegroupTime;
+            _statusText = "Regrouping";
+            return;
+        }
+
+        var direction = toHome.Normalized();
+        _velocity = _velocity.MoveToward(direction * MoveSpeed * RoutMoveSpeedMultiplier, Acceleration * delta);
+        FaceDirection(_velocity.Normalized(), delta);
+        GlobalPosition += _velocity * delta;
+    }
+
+    private void Regroup()
+    {
+        _health = MaxHealth * RegroupHealthRatio;
+        _morale = MaxMorale * RegroupMoraleRatio;
+        _regroupTimer = 0.0f;
+        _state = SquadState.Active;
         _statusText = "Regrouped";
         SetVisualAlive(true);
         UpdateLabel();
