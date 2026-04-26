@@ -111,6 +111,15 @@ public partial class SquadController : Node3D
     public float ChargeBuildRate = 0.7f;
 
     [Export]
+    public float ChargeFormationStartPower = 0.35f;
+
+    [Export]
+    public float ChargeFormationBuildRate = 2.2f;
+
+    [Export]
+    public float ChargeFormationRelaxRate = 1.8f;
+
+    [Export]
     public float AimBuildRate = 1.2f;
 
     [Export]
@@ -523,7 +532,6 @@ public partial class SquadController : Node3D
         _velocity = _velocity.MoveToward(desiredVelocity, Acceleration * delta);
 
         var speed = _velocity.Length();
-        _formationIntent = Mathf.MoveToward(_formationIntent, Mathf.Clamp(speed / MoveSpeed, 0.0f, 1.0f), delta * 4.0f);
         if (speed > 0.2f)
         {
             FaceDirection(_velocity.Normalized(), delta);
@@ -532,6 +540,8 @@ public partial class SquadController : Node3D
         if (speed >= ChargeSpeedThreshold)
         {
             _chargePower = Mathf.Clamp(_chargePower + ChargeBuildRate * delta, 0.0f, 1.0f);
+            var chargeFormation = Mathf.InverseLerp(ChargeFormationStartPower, 1.0f, _chargePower);
+            _formationIntent = Mathf.MoveToward(_formationIntent, chargeFormation, ChargeFormationBuildRate * delta);
             _statusText = _chargePower >= 0.95f ? "Charging (ready)" : "Charging";
 
             if (_chargePower >= 0.95f && _lancerCooldown <= 0.0f)
@@ -546,11 +556,13 @@ public partial class SquadController : Node3D
         else if (speed > 0.5f)
         {
             _chargePower = Mathf.Max(0.0f, _chargePower - delta * 0.25f);
+            _formationIntent = Mathf.MoveToward(_formationIntent, 0.0f, ChargeFormationRelaxRate * delta);
             _statusText = _isEngaged ? "Locked" : "Advancing";
         }
         else
         {
             _chargePower = Mathf.Max(0.0f, _chargePower - delta * 0.8f);
+            _formationIntent = Mathf.MoveToward(_formationIntent, 0.0f, ChargeFormationRelaxRate * delta);
             _statusText = _isEngaged ? "Holding Line" : "Recovering";
         }
     }
