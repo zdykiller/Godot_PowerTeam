@@ -107,6 +107,15 @@ public partial class SquadController : Node3D
     [Export]
     public float FormationLerp = 8.0f;
 
+    [Export]
+    public PackedScene UnitModelScene;
+
+    [Export]
+    public Vector3 UnitModelScale = Vector3.One;
+
+    [Export]
+    public Vector3 UnitModelRotationDegrees = Vector3.Zero;
+
     private Label3D _stateLabel;
     private MeshInstance3D _bodyMesh;
     private Node3D _unitsRoot;
@@ -373,22 +382,55 @@ public partial class SquadController : Node3D
         }
 
         _bodyMesh.Visible = false;
-        var material = _bodyMesh.MaterialOverride;
         var count = Role == SquadRole.Lancer ? LancerUnitCount : ArcherUnitCount;
 
         for (var i = 0; i < count; i++)
         {
-            var unit = new MeshInstance3D
-            {
-                Name = $"Unit{i + 1}",
-                Mesh = _bodyMesh.Mesh,
-                MaterialOverride = material,
-                Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.48f),
-            };
+            var unit = CreateVisualUnit(i);
             unit.Position = GetFormationSlot(i, 0.0f);
             _unitsRoot.AddChild(unit);
             _unitNodes.Add(unit);
         }
+    }
+
+    private Node3D CreateVisualUnit(int index)
+    {
+        if (UnitModelScene != null)
+        {
+            var modelRoot = new Node3D
+            {
+                Name = $"Unit{index + 1}",
+                Scale = UnitModelScale,
+                RotationDegrees = UnitModelRotationDegrees,
+            };
+            var modelInstance = UnitModelScene.Instantiate<Node3D>();
+            modelRoot.AddChild(modelInstance);
+            return modelRoot;
+        }
+
+        return new MeshInstance3D
+        {
+            Name = $"Unit{index + 1}",
+            Mesh = _bodyMesh.Mesh,
+            MaterialOverride = _bodyMesh.MaterialOverride,
+            Scale = Vector3.One * GetUnitVisualScale(),
+        };
+    }
+
+    private float GetUnitVisualScale()
+    {
+        return Role == SquadRole.Lancer ? 0.42f : 0.48f;
+    }
+
+    private void SetUnitScale(Node3D unit, float pulse)
+    {
+        if (UnitModelScene != null)
+        {
+            unit.Scale = UnitModelScale * pulse;
+            return;
+        }
+
+        unit.Scale = Vector3.One * GetUnitVisualScale() * pulse;
     }
 
     private void UpdateFormation(float delta)
@@ -406,7 +448,7 @@ public partial class SquadController : Node3D
             unit.Position = unit.Position.Lerp(target, FormationLerp * delta);
 
             var pulse = 1.0f + _flashTimer * 0.25f + (IsSelected ? 0.08f : 0.0f);
-            unit.Scale = Vector3.One * (Role == SquadRole.Lancer ? 0.42f : 0.48f) * pulse;
+            SetUnitScale(unit, pulse);
         }
     }
 
