@@ -4,6 +4,14 @@ using System.Collections.Generic;
 
 public partial class GameRoot : Node3D
 {
+    private enum AllyTactic
+    {
+        Assault,
+        Hold,
+        Focus,
+        Regroup,
+    }
+
     private CommandWheelControl _wheel;
     private Label _hudLabel;
     private SquadController[] _squads = [];
@@ -14,6 +22,7 @@ public partial class GameRoot : Node3D
     private string _combatText = "Destroy the enemy base.";
     private string _gameState = "Battle";
     private float _meleeUiTimer;
+    private AllyTactic _allyTactic = AllyTactic.Assault;
 
     [Export]
     public float EffectLifetime = 0.65f;
@@ -29,6 +38,15 @@ public partial class GameRoot : Node3D
 
     [Export]
     public float AiCommandStrength = 0.85f;
+
+    [Export]
+    public float AllyHoldRadius = 5.0f;
+
+    [Export]
+    public float AllyBaseGuardRadius = 7.0f;
+
+    [Export]
+    public float AllyFocusRange = 18.0f;
 
     [Export]
     public float FlankAttackMoraleMultiplier = 1.35f;
@@ -91,6 +109,7 @@ public partial class GameRoot : Node3D
 
         UpdateEngagements();
         _meleeUiTimer = Mathf.Max(0.0f, _meleeUiTimer - (float)delta);
+        UpdateTacticInput();
 
         foreach (var squad in _squads)
         {
@@ -142,8 +161,101 @@ public partial class GameRoot : Node3D
             return Vector2.Zero;
         }
 
+        if (squad.TeamId == 0)
+        {
+            return BuildAllyCommand(squad);
+        }
+
+        return BuildEnemyCommand(squad);
+    }
+
+    private Vector2 BuildEnemyCommand(SquadController squad)
+    {
         var nearestEnemy = FindNearestEnemySquad(squad, AiEngageRange);
         var targetPosition = nearestEnemy?.GlobalPosition ?? GetEnemyBase(squad.TeamId)?.GlobalPosition ?? squad.GlobalPosition;
+        return BuildMoveCommandTo(squad, targetPosition, nearestEnemy);
+    }
+
+    private Vector2 BuildAllyCommand(SquadController squad)
+    {
+        switch (_allyTactic)
+        {
+            case AllyTactic.Hold:
+                return BuildHoldCommand(squad);
+            case AllyTactic.Focus:
+                return BuildFocusCommand(squad);
+            case AllyTactic.Regroup:
+                return BuildRegroupCommand(squad);
+            default:
+                var nearestEnemy = FindNearestEnemySquad(squad, AiEngageRange);
+                var targetPosition = nearestEnemy?.GlobalPosition ?? GetEnemyBase(squad.TeamId)?.GlobalPosition ?? squad.GlobalPosition;
+                return BuildMoveCommandTo(squad, targetPosition, nearestEnemy);
+        }
+    }
+
+    private Vector2 BuildHoldCommand(SquadController squad)
+    {
+        var nearestEnemy = FindNearestEnemySquad(squad, AiEngageRange * 0.75f);
+        if (nearestEnemy != null)
+        {
+            return BuildMoveCommandTo(squad, nearestEnemy.GlobalPosition, nearestEnemy, 0.55f);
+        }
+
+        var homeBase = GetBase(squad.TeamId);
+        var anchor = _playerSquad != null && _playerSquad.IsAlive ? _playerSquad.GlobalPosition : homeBase?.GlobalPosition ?? squad.GlobalPosition;
+        var playerNearBase = _playerSquad != null && homeBase != null && FlatDistance(_playerSquad.GlobalPosition, homeBase.GlobalPosition) <= AllyBaseGuardRadius;
+        var maxRadius = playerNearBase
+            ? AllyBaseGuardRadius
+            : AllyHoldRadius;
+
+        if (FlatDistance(squad.GlobalPosition, anchor) <= maxRadius)
+        {
+            return Vector2.Zero;
+        }
+
+        return BuildMoveCommandTo(squad, anchor, null, 0.65f);
+    }
+
+    private Vector2 BuildFocusCommand(SquadController squad)
+    {
+        var focusTarget = FindPlayerFocusTarget();
+        if (focusTarget != null)
+        {
+            return BuildMoveCommandTo(squad, focusTarget.GlobalPosition, focusTarget);
+        }
+
+        return BuildHoldCommand(squad);
+    }
+
+    private Vector2 BuildRegroupCommand(SquadController squad)
+    {
+        var homeBase = GetBase(squad.TeamId);
+        if (homeBase == null)
+        {
+            return Vector2.Zero;
+        }
+
+        if (FlatDistance(squad.GlobalPosition, homeBase.GlobalPosition) <= AllyBaseGuardRadius)
+        {
+            return Vector2.Zero;
+        }
+
+        return BuildMoveCommandTo(squad, homeBase.GlobalPosition, null, 0.85f);
+    }
+
+    private SquadController FindPlayerFocusTarget()
+    {
+        if (_playerSquad == null || !_playerSquad.IsAlive)
+        {
+            return null;
+        }
+
+        var candidates = FindEnemiesInArc(_playerSquad, AllyFocusRange, Mathf.DegToRad(80.0f));
+        return candidates.FirstOrDefault() ?? FindNearestEnemySquad(_playerSquad, AllyFocusRange);
+    }
+
+    private Vector2 BuildMoveCommandTo(SquadController squad, Vector3 targetPosition, SquadController targetEnemy, float strengthOverride = -1.0f)
+    {
         var toTarget = targetPosition - squad.GlobalPosition;
         toTarget.Y = 0.0f;
 
@@ -153,8 +265,41 @@ public partial class GameRoot : Node3D
         }
 
         var direction = toTarget.Normalized();
-        var strength = squad.Role == SquadController.SquadRole.Archer && nearestEnemy != null ? 0.45f : AiCommandStrength;
+        var strength = strengthOverride >= 0.0f
+            ? strengthOverride
+            : squad.Role == SquadController.SquadRole.Archer && targetEnemy != null ? 0.45f : AiCommandStrength;
         return new Vector2(direction.X, direction.Z) * strength;
+    }
+
+    private void UpdateTacticInput()
+    {
+        if (Input.IsKeyPressed(Key.Key1))
+        {
+            SetAllyTactic(AllyTactic.Assault);
+        }
+        else if (Input.IsKeyPressed(Key.Key2))
+        {
+            SetAllyTactic(AllyTactic.Hold);
+        }
+        else if (Input.IsKeyPressed(Key.Key3))
+        {
+            SetAllyTactic(AllyTactic.Focus);
+        }
+        else if (Input.IsKeyPressed(Key.Key4))
+        {
+            SetAllyTactic(AllyTactic.Regroup);
+        }
+    }
+
+    private void SetAllyTactic(AllyTactic tactic)
+    {
+        if (_allyTactic == tactic)
+        {
+            return;
+        }
+
+        _allyTactic = tactic;
+        _combatText = $"Allies: {_allyTactic}";
     }
 
     private void ResolveLancerImpact(SquadController squad, SquadController.CombatAction action)
@@ -467,6 +612,8 @@ public partial class GameRoot : Node3D
             [
                 $"Power Team - {_gameState}",
                 "LMB drag: command squad intent",
+                "Ally tactics: 1 Assault  2 Hold  3 Focus  4 Regroup",
+                $"Current tactic: {_allyTactic}",
                 "Win: destroy enemy base",
                 playerBase?.GetStatusText() ?? "PlayerBase missing",
                 enemyBase?.GetStatusText() ?? "EnemyBase missing",
