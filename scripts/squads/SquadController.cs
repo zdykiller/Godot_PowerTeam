@@ -142,9 +142,18 @@ public partial class SquadController : Node3D
     [Export]
     public Vector3 UnitModelRotationDegrees = Vector3.Zero;
 
+    [Export]
+    public float TeamDiscRadius = 1.95f;
+
+    [Export]
+    public float MoraleDiscRadius = 1.25f;
+
     private Label3D _stateLabel;
     private MeshInstance3D _bodyMesh;
     private Node3D _unitsRoot;
+    private MeshInstance3D _teamDisc;
+    private MeshInstance3D _moraleDisc;
+    private StandardMaterial3D _moraleDiscMaterial;
     private readonly System.Collections.Generic.List<Node3D> _unitNodes = [];
     private Vector3 _velocity = Vector3.Zero;
     private float _chargePower;
@@ -188,6 +197,8 @@ public partial class SquadController : Node3D
         _health = MaxHealth;
         _morale = MaxMorale;
         BuildVisualUnits();
+        BuildSquadIndicators();
+        RefreshVisualFeedback();
         _volleyCooldown = VolleyInterval;
         UpdateLabel();
     }
@@ -203,6 +214,7 @@ public partial class SquadController : Node3D
         {
             SimulateRout((float)delta);
             UpdateFormation((float)delta);
+            RefreshVisualFeedback();
             UpdateLabel();
             return;
         }
@@ -214,6 +226,7 @@ public partial class SquadController : Node3D
             {
                 Regroup();
             }
+            RefreshVisualFeedback();
             UpdateLabel();
             return;
         }
@@ -224,11 +237,13 @@ public partial class SquadController : Node3D
         }
 
         UpdateFormation((float)delta);
+        RefreshVisualFeedback();
     }
 
     public void SetSelected(bool selected)
     {
         IsSelected = selected;
+        RefreshVisualFeedback();
         UpdateLabel();
     }
 
@@ -314,6 +329,7 @@ public partial class SquadController : Node3D
         _health = Mathf.Max(0.0f, _health - Mathf.Max(1.0f, damage - Defense));
         _morale = Mathf.Max(0.0f, _morale - moraleDamage);
         _flashTimer = 0.25f;
+        RefreshVisualFeedback();
 
         if (_health <= 0.0f || _morale <= 0.0f)
         {
@@ -487,6 +503,119 @@ public partial class SquadController : Node3D
         return Role == SquadRole.Lancer ? 0.42f : 0.48f;
     }
 
+    private void BuildSquadIndicators()
+    {
+        if (_teamDisc != null)
+        {
+            return;
+        }
+
+        _teamDisc = CreateDisc("TeamDisc", TeamDiscRadius, GetTeamColor(), -0.88f);
+        _moraleDiscMaterial = CreateMaterial(GetMoraleColor(1.0f));
+        _moraleDisc = CreateDisc("MoraleDisc", MoraleDiscRadius, GetMoraleColor(1.0f), -0.84f);
+        _moraleDisc.MaterialOverride = _moraleDiscMaterial;
+        AddChild(_teamDisc);
+        AddChild(_moraleDisc);
+    }
+
+    private MeshInstance3D CreateDisc(string name, float radius, Color color, float y)
+    {
+        return new MeshInstance3D
+        {
+            Name = name,
+            Mesh = new CylinderMesh
+            {
+                TopRadius = radius,
+                BottomRadius = radius,
+                Height = 0.035f,
+            },
+            MaterialOverride = CreateMaterial(color),
+            Position = new Vector3(0.0f, y, 0.0f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+    }
+
+    private StandardMaterial3D CreateMaterial(Color color)
+    {
+        return new StandardMaterial3D
+        {
+            AlbedoColor = color,
+            Roughness = 0.85f,
+        };
+    }
+
+    private Color GetTeamColor()
+    {
+        return TeamId == 0 ? new Color(0.95f, 0.67f, 0.12f, 1.0f) : new Color(0.78f, 0.08f, 0.08f, 1.0f);
+    }
+
+    private Color GetMoraleColor(float moraleRatio)
+    {
+        if (_state == SquadState.Routed)
+        {
+            return new Color(1.0f, 0.18f, 0.08f, 1.0f);
+        }
+
+        if (_state == SquadState.Regrouping)
+        {
+            return new Color(0.25f, 0.6f, 1.0f, 1.0f);
+        }
+
+        return moraleRatio switch
+        {
+            > 0.55f => new Color(0.25f, 0.9f, 0.35f, 1.0f),
+            > 0.25f => new Color(1.0f, 0.75f, 0.12f, 1.0f),
+            _ => new Color(1.0f, 0.22f, 0.12f, 1.0f),
+        };
+    }
+
+    private void RefreshVisualFeedback()
+    {
+        UpdateCasualtyVisuals();
+        UpdateSquadIndicators();
+    }
+
+    private void UpdateCasualtyVisuals()
+    {
+        if (_unitNodes.Count == 0)
+        {
+            return;
+        }
+
+        var healthRatio = MaxHealth <= 0.0f ? 0.0f : Mathf.Clamp(_health / MaxHealth, 0.0f, 1.0f);
+        var visibleCount = Mathf.CeilToInt(_unitNodes.Count * healthRatio);
+
+        if (_state == SquadState.Routed || _state == SquadState.Regrouping)
+        {
+            visibleCount = Mathf.Max(1, visibleCount);
+        }
+        else
+        {
+            visibleCount = Mathf.Clamp(visibleCount, 1, _unitNodes.Count);
+        }
+
+        for (var i = 0; i < _unitNodes.Count; i++)
+        {
+            _unitNodes[i].Visible = i < visibleCount;
+        }
+    }
+
+    private void UpdateSquadIndicators()
+    {
+        if (_teamDisc == null || _moraleDisc == null || _moraleDiscMaterial == null)
+        {
+            return;
+        }
+
+        var healthRatio = MaxHealth <= 0.0f ? 0.0f : Mathf.Clamp(_health / MaxHealth, 0.0f, 1.0f);
+        var moraleRatio = MaxMorale <= 0.0f ? 0.0f : Mathf.Clamp(_morale / MaxMorale, 0.0f, 1.0f);
+        var selectedPulse = IsSelected ? 1.12f : 1.0f;
+
+        _teamDisc.Scale = new Vector3(selectedPulse, 1.0f, selectedPulse);
+        _moraleDisc.Scale = new Vector3(Mathf.Lerp(0.35f, 1.0f, moraleRatio), 1.0f, Mathf.Lerp(0.35f, 1.0f, healthRatio));
+        _moraleDiscMaterial.AlbedoColor = GetMoraleColor(moraleRatio);
+    }
+
     private void SetUnitScale(Node3D unit, float pulse)
     {
         if (UnitModelScene != null)
@@ -567,7 +696,7 @@ public partial class SquadController : Node3D
         _formationIntent = 1.0f;
         _state = SquadState.Routed;
         _statusText = reason;
-        SetVisualAlive(true);
+        RefreshVisualFeedback();
         UpdateLabel();
     }
 
@@ -598,20 +727,7 @@ public partial class SquadController : Node3D
         _regroupTimer = 0.0f;
         _state = SquadState.Active;
         _statusText = "Regrouped";
-        SetVisualAlive(true);
+        RefreshVisualFeedback();
         UpdateLabel();
-    }
-
-    private void SetVisualAlive(bool alive)
-    {
-        if (_bodyMesh != null)
-        {
-            _bodyMesh.Visible = false;
-        }
-
-        foreach (var unit in _unitNodes)
-        {
-            unit.Visible = alive;
-        }
     }
 }
