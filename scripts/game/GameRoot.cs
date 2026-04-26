@@ -14,6 +14,7 @@ public partial class GameRoot : Node3D
 
     private CommandWheelControl _wheel;
     private Label _hudLabel;
+    private readonly Dictionary<AllyTactic, Button> _tacticButtons = [];
     private SquadController[] _squads = [];
     private BaseCore[] _bases = [];
     private Node3D _debugRoot;
@@ -73,6 +74,7 @@ public partial class GameRoot : Node3D
     {
         _wheel = GetNode<CommandWheelControl>("UI/CommandWheel");
         _hudLabel = GetNode<Label>("UI/HudPanel/Margin/VBox/StatusLabel");
+        BuildTacticButtons();
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
         if (_debugRoot == null)
         {
@@ -96,7 +98,54 @@ public partial class GameRoot : Node3D
         }
 
         SetSelectedSquad(_playerSquad);
+        UpdateTacticButtons();
         UpdateHud();
+    }
+
+    private void BuildTacticButtons()
+    {
+        var vbox = GetNodeOrNull<VBoxContainer>("UI/HudPanel/Margin/VBox");
+        if (vbox == null || _tacticButtons.Count > 0)
+        {
+            return;
+        }
+
+        var title = new Label
+        {
+            Name = "TacticTitle",
+            Text = "Ally Tactics",
+        };
+        title.AddThemeFontSizeOverride("font_size", 20);
+        vbox.AddChild(title);
+        vbox.MoveChild(title, 0);
+
+        var row = new HBoxContainer
+        {
+            Name = "TacticButtons",
+        };
+        row.AddThemeConstantOverride("separation", 8);
+        vbox.AddChild(row);
+        vbox.MoveChild(row, 1);
+
+        AddTacticButton(row, AllyTactic.Assault, "Assault");
+        AddTacticButton(row, AllyTactic.Hold, "Hold");
+        AddTacticButton(row, AllyTactic.Focus, "Focus");
+        AddTacticButton(row, AllyTactic.Regroup, "Regroup");
+    }
+
+    private void AddTacticButton(HBoxContainer row, AllyTactic tactic, string text)
+    {
+        var button = new Button
+        {
+            Text = text,
+            ToggleMode = true,
+            CustomMinimumSize = new Vector2(118.0f, 44.0f),
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        button.AddThemeFontSizeOverride("font_size", 18);
+        button.Pressed += () => SetAllyTactic(tactic);
+        row.AddChild(button);
+        _tacticButtons[tactic] = button;
     }
 
     public override void _Process(double delta)
@@ -300,6 +349,15 @@ public partial class GameRoot : Node3D
 
         _allyTactic = tactic;
         _combatText = $"Allies: {_allyTactic}";
+        UpdateTacticButtons();
+    }
+
+    private void UpdateTacticButtons()
+    {
+        foreach (var pair in _tacticButtons)
+        {
+            pair.Value.ButtonPressed = pair.Key == _allyTactic;
+        }
     }
 
     private void ResolveLancerImpact(SquadController squad, SquadController.CombatAction action)
@@ -612,7 +670,7 @@ public partial class GameRoot : Node3D
             [
                 $"Power Team - {_gameState}",
                 "LMB drag: command squad intent",
-                "Ally tactics: 1 Assault  2 Hold  3 Focus  4 Regroup",
+                "Tap tactic buttons or press 1-4",
                 $"Current tactic: {_allyTactic}",
                 "Win: destroy enemy base",
                 playerBase?.GetStatusText() ?? "PlayerBase missing",
