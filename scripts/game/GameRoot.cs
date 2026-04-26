@@ -14,6 +14,9 @@ public partial class GameRoot : Node3D
 
     private CommandWheelControl _wheel;
     private Label _hudLabel;
+    private PanelContainer _resultPanel;
+    private Label _resultTitle;
+    private Label _resultSummary;
     private readonly Dictionary<AllyTactic, Button> _tacticButtons = [];
     private SquadController[] _squads = [];
     private BaseCore[] _bases = [];
@@ -75,6 +78,7 @@ public partial class GameRoot : Node3D
         _wheel = GetNode<CommandWheelControl>("UI/CommandWheel");
         _hudLabel = GetNode<Label>("UI/HudPanel/Margin/VBox/StatusLabel");
         BuildTacticButtons();
+        BuildResultPanel();
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
         if (_debugRoot == null)
         {
@@ -131,6 +135,67 @@ public partial class GameRoot : Node3D
         AddTacticButton(row, AllyTactic.Hold, "Hold");
         AddTacticButton(row, AllyTactic.Focus, "Focus");
         AddTacticButton(row, AllyTactic.Regroup, "Regroup");
+    }
+
+    private void BuildResultPanel()
+    {
+        var ui = GetNodeOrNull<CanvasLayer>("UI");
+        if (ui == null || _resultPanel != null)
+        {
+            return;
+        }
+
+        var center = new CenterContainer
+        {
+            Name = "ResultOverlay",
+            Visible = false,
+        };
+        center.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+        ui.AddChild(center);
+
+        _resultPanel = new PanelContainer
+        {
+            Name = "ResultPanel",
+            CustomMinimumSize = new Vector2(520.0f, 260.0f),
+        };
+        center.AddChild(_resultPanel);
+
+        var margin = new MarginContainer();
+        margin.AddThemeConstantOverride("margin_left", 28);
+        margin.AddThemeConstantOverride("margin_top", 24);
+        margin.AddThemeConstantOverride("margin_right", 28);
+        margin.AddThemeConstantOverride("margin_bottom", 24);
+        _resultPanel.AddChild(margin);
+
+        var box = new VBoxContainer();
+        box.AddThemeConstantOverride("separation", 16);
+        margin.AddChild(box);
+
+        _resultTitle = new Label
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Text = "Battle Complete",
+        };
+        _resultTitle.AddThemeFontSizeOverride("font_size", 38);
+        box.AddChild(_resultTitle);
+
+        _resultSummary = new Label
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Text = "The battle has ended.",
+        };
+        _resultSummary.AddThemeFontSizeOverride("font_size", 22);
+        box.AddChild(_resultSummary);
+
+        var restartButton = new Button
+        {
+            Text = "Restart Battle",
+            CustomMinimumSize = new Vector2(260.0f, 58.0f),
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        restartButton.AddThemeFontSizeOverride("font_size", 24);
+        restartButton.Pressed += RestartBattle;
+        box.AddChild(restartButton);
     }
 
     private void AddTacticButton(HBoxContainer row, AllyTactic tactic, string text)
@@ -645,14 +710,34 @@ public partial class GameRoot : Node3D
 
         if (playerBase != null && !playerBase.IsAlive)
         {
-            _gameState = "Defeat";
-            _combatText = "Defeat: your base fell.";
+            EndBattle("Defeat", "Your base fell.");
         }
         else if (enemyBase != null && !enemyBase.IsAlive)
         {
-            _gameState = "Victory";
-            _combatText = "Victory: enemy base destroyed.";
+            EndBattle("Victory", "Enemy base destroyed.");
         }
+    }
+
+    private void EndBattle(string result, string summary)
+    {
+        if (_gameState != "Battle")
+        {
+            return;
+        }
+
+        _gameState = result;
+        _combatText = $"{result}: {summary}";
+        if (_resultPanel != null)
+        {
+            _resultPanel.GetParent<Control>().Visible = true;
+            _resultTitle.Text = result;
+            _resultSummary.Text = summary;
+        }
+    }
+
+    private void RestartBattle()
+    {
+        GetTree().ReloadCurrentScene();
     }
 
     private void UpdateHud()
