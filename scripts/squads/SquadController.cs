@@ -184,11 +184,22 @@ public partial class SquadController : Node3D
     [Export]
     public float KnockdownTiltDegrees = 72.0f;
 
+    [Export]
+    public float ChargeWarningMinPower = 0.35f;
+
+    [Export]
+    public float ChargeWarningLength = 5.4f;
+
+    [Export]
+    public float ChargeWarningWidth = 1.2f;
+
     private Label3D _stateLabel;
     private MeshInstance3D _bodyMesh;
     private Node3D _unitsRoot;
     private MeshInstance3D _teamDisc;
     private MeshInstance3D _moraleDisc;
+    private MeshInstance3D _chargeWarning;
+    private StandardMaterial3D _chargeWarningMaterial;
     private StandardMaterial3D _moraleDiscMaterial;
     private readonly System.Collections.Generic.List<Node3D> _unitNodes = [];
     private readonly System.Collections.Generic.List<UnitImpactState> _impactStates = [];
@@ -246,6 +257,7 @@ public partial class SquadController : Node3D
         _morale = MaxMorale;
         BuildVisualUnits();
         BuildSquadIndicators();
+        BuildChargeWarning();
         RefreshVisualFeedback();
         _volleyCooldown = VolleyInterval;
         UpdateLabel();
@@ -716,6 +728,7 @@ public partial class SquadController : Node3D
     {
         UpdateCasualtyVisuals();
         UpdateSquadIndicators();
+        UpdateChargeWarning();
     }
 
     private void UpdateCasualtyVisuals()
@@ -757,6 +770,55 @@ public partial class SquadController : Node3D
         _teamDisc.Scale = new Vector3(selectedPulse, 1.0f, selectedPulse);
         _moraleDisc.Scale = new Vector3(Mathf.Lerp(0.35f, 1.0f, moraleRatio), 1.0f, Mathf.Lerp(0.35f, 1.0f, healthRatio));
         _moraleDiscMaterial.AlbedoColor = GetMoraleColor(moraleRatio);
+    }
+
+    private void BuildChargeWarning()
+    {
+        if (_chargeWarning != null)
+        {
+            return;
+        }
+
+        _chargeWarningMaterial = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(1.0f, 0.08f, 0.04f, 0.36f),
+            EmissionEnabled = true,
+            Emission = new Color(1.0f, 0.05f, 0.02f, 1.0f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            Roughness = 0.65f,
+        };
+        _chargeWarning = new MeshInstance3D
+        {
+            Name = "ChargeWarning",
+            Mesh = new BoxMesh
+            {
+                Size = new Vector3(ChargeWarningWidth, 0.035f, ChargeWarningLength),
+            },
+            MaterialOverride = _chargeWarningMaterial,
+            Position = new Vector3(0.0f, -0.82f, -ChargeWarningLength * 0.5f - 1.2f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false,
+        };
+        AddChild(_chargeWarning);
+    }
+
+    private void UpdateChargeWarning()
+    {
+        if (_chargeWarning == null || _chargeWarningMaterial == null)
+        {
+            return;
+        }
+
+        var visible = TeamId != 0 && Role == SquadRole.Lancer && IsAlive && _chargePower >= ChargeWarningMinPower;
+        _chargeWarning.Visible = visible;
+        if (!visible)
+        {
+            return;
+        }
+
+        var warningRatio = Mathf.InverseLerp(ChargeWarningMinPower, 1.0f, _chargePower);
+        _chargeWarning.Scale = new Vector3(Mathf.Lerp(0.65f, 1.0f, warningRatio), 1.0f, Mathf.Lerp(0.45f, 1.0f, warningRatio));
+        _chargeWarningMaterial.AlbedoColor = new Color(1.0f, 0.08f, 0.04f, Mathf.Lerp(0.18f, 0.48f, warningRatio));
     }
 
     private void SetUnitScale(Node3D unit, float pulse)

@@ -28,6 +28,18 @@ public partial class GameRoot : Node3D
     [Export]
     public float AiCommandStrength = 0.85f;
 
+    [Export]
+    public float FlankAttackMoraleMultiplier = 1.35f;
+
+    [Export]
+    public float RearAttackMoraleMultiplier = 1.75f;
+
+    [Export]
+    public float RearAttackDotThreshold = 0.55f;
+
+    [Export]
+    public float FlankAttackAbsDotThreshold = 0.35f;
+
     public override void _Ready()
     {
         _wheel = GetNode<CommandWheelControl>("UI/CommandWheel");
@@ -161,7 +173,8 @@ public partial class GameRoot : Node3D
         }
 
         var targetPos = target.GlobalPosition;
-        var defeated = target.ApplyDamage(action.LancerDamage, action.LancerMoraleDamage);
+        var positional = GetPositionalMoraleBonus(squad, target);
+        var defeated = target.ApplyDamage(action.LancerDamage, action.LancerMoraleDamage * positional.Multiplier);
         target.AddKnockback(squad.FacingDirection, 5.0f + squad.CurrentSpeed * 0.25f);
         target.PlayImpactReaction(squad.FacingDirection);
         if (defeated)
@@ -169,7 +182,8 @@ public partial class GameRoot : Node3D
             DamageBase(GetBase(target.TeamId), target.BaseDamageOnDefeat, target.Name);
         }
 
-        _combatText = defeated ? $"{squad.Name} broke {target.Name}" : $"{squad.Name} charged {target.Name}";
+        var angleText = positional.Label.Length > 0 ? $" ({positional.Label})" : "";
+        _combatText = defeated ? $"{squad.Name} broke {target.Name}{angleText}" : $"{squad.Name} charged {target.Name}{angleText}";
         SpawnImpactPoint(targetPos);
         SpawnLancerTrail(squad.GlobalPosition, targetPos, new Color(0.98f, 0.32f, 0.15f, 1.0f));
     }
@@ -220,7 +234,8 @@ public partial class GameRoot : Node3D
         foreach (var target in targets)
         {
             var pushDirection = target.GlobalPosition - squad.GlobalPosition;
-            var defeated = target.ApplyDamage(action.VolleyDamage, action.VolleyMoraleDamage);
+            var positional = GetPositionalMoraleBonus(squad, target);
+            var defeated = target.ApplyDamage(action.VolleyDamage, action.VolleyMoraleDamage * positional.Multiplier);
             target.AddKnockback(pushDirection, defeated ? 4.0f : 2.0f);
             if (defeated)
             {
@@ -230,6 +245,29 @@ public partial class GameRoot : Node3D
         }
 
         _combatText = $"{squad.Name} volleyed {targets.Length} squad(s).";
+    }
+
+    private (float Multiplier, string Label) GetPositionalMoraleBonus(SquadController attacker, SquadController target)
+    {
+        var attackDirection = target.GlobalPosition - attacker.GlobalPosition;
+        attackDirection.Y = 0.0f;
+        if (attackDirection.LengthSquared() <= 0.001f)
+        {
+            return (1.0f, "");
+        }
+
+        var dot = attackDirection.Normalized().Dot(target.FacingDirection);
+        if (dot >= RearAttackDotThreshold)
+        {
+            return (RearAttackMoraleMultiplier, "rear");
+        }
+
+        if (Mathf.Abs(dot) <= FlankAttackAbsDotThreshold)
+        {
+            return (FlankAttackMoraleMultiplier, "flank");
+        }
+
+        return (1.0f, "");
     }
 
     private void ResolveBaseAttacks(float delta)
