@@ -23,10 +23,10 @@ public partial class GameRoot : Node3D
     public float VolleyBeamSpacing = 0.35f;
 
     [Export]
-    public float AiEngageRange = 7.0f;
+    public float AiEngageRange = 9.5f;
 
     [Export]
-    public float AiCommandStrength = 1.0f;
+    public float AiCommandStrength = 0.85f;
 
     public override void _Ready()
     {

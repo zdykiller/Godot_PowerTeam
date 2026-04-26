@@ -45,7 +45,7 @@ public partial class SquadController : Node3D
     public float BaseDamageOnDefeat = 35.0f;
 
     [Export]
-    public float BaseAttackDamagePerSecond = 8.0f;
+    public float BaseAttackDamagePerSecond = 5.0f;
 
     [Export]
     public float BaseAttackRange = 3.0f;

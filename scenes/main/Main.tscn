@@ -15,7 +15,7 @@ ambient_light_color = Color(0.494118, 0.560784, 0.631373, 1)
 ambient_light_energy = 0.8
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_7427r"]
-size = Vector2(40, 40)
+size = Vector2(72, 72)
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_fd0wr"]
 radius = 0.8
@@ -28,7 +28,7 @@ size = Vector3(0.26, 0.2, 1.2)
 size = Vector3(0.72, 0.22, 0.42)
 
 [sub_resource type="BoxMesh" id="BoxMesh_lane"]
-size = Vector3(0.08, 0.04, 40)
+size = Vector3(0.08, 0.04, 72)
 
 [sub_resource type="BoxMesh" id="BoxMesh_base"]
 size = Vector3(5.5, 2.2, 2.6)
@@ -83,12 +83,12 @@ shadow_enabled = true
 environment = SubResource("Environment_rac1j")
 
 [node name="CameraRig" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 23, 23)
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 44, 0)
 
 [node name="Camera3D" type="Camera3D" parent="CameraRig"]
 current = true
 projection = 1
-size = 25.0
+size = 34.0
 
 [node name="Ground" type="Node3D" parent="."]
 
@@ -102,19 +102,19 @@ mesh = SubResource("BoxMesh_lane")
 material_override = SubResource("Material_lane")
 
 [node name="LaneX1" type="MeshInstance3D" parent="Ground"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.03, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.03, 0)
 mesh = SubResource("BoxMesh_lane")
 material_override = SubResource("Material_lane")
 
 [node name="LaneX2" type="MeshInstance3D" parent="Ground"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0.03, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.03, 0)
 mesh = SubResource("BoxMesh_lane")
 material_override = SubResource("Material_lane")
 
 [node name="Squads" type="Node3D" parent="."]
 
 [node name="LancerSquad" type="Node3D" parent="Squads"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.8, 0.9, 5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.9, 13)
 script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 0
@@ -144,7 +144,7 @@ font_size = 40
 modulate = Color(0.968627, 0.835294, 0.341176, 1)
 
 [node name="ArcherSquad" type="Node3D" parent="Squads"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 6)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 15)
 script = ExtResource("2_j36x3")
 Role = 1
 TeamId = 0
@@ -175,7 +175,7 @@ font_size = 40
 modulate = Color(0.52549, 0.87451, 0.654902, 1)
 
 [node name="AllyLancer2" type="Node3D" parent="Squads"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.8, 0.9, 5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.9, 13)
 script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 0
@@ -204,7 +204,7 @@ font_size = 40
 modulate = Color(0.968627, 0.835294, 0.341176, 1)
 
 [node name="EnemyLancer1" type="Node3D" parent="Squads"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -4.8, 0.9, -8)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -8, 0.9, -16)
 script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 1
@@ -233,7 +233,7 @@ font_size = 40
 modulate = Color(1, 0.35, 0.25, 1)
 
 [node name="EnemyArcher" type="Node3D" parent="Squads"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.9, -9)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0.9, -18)
 script = ExtResource("2_j36x3")
 Role = 1
 TeamId = 1
@@ -264,7 +264,7 @@ font_size = 40
 modulate = Color(1, 0.35, 0.25, 1)
 
 [node name="EnemyLancer2" type="Node3D" parent="Squads"]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 4.8, 0.9, -8)
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0.9, -16)
 script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 1
@@ -295,7 +295,7 @@ modulate = Color(1, 0.35, 0.25, 1)
 [node name="Bases" type="Node3D" parent="."]
 
 [node name="PlayerBase" type="Node3D" parent="Bases"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 25)
 script = ExtResource("6_c86hw")
 TeamId = 0
 
@@ -311,7 +311,7 @@ font_size = 44
 modulate = Color(0.95, 0.74, 0.16, 1)
 
 [node name="EnemyBase" type="Node3D" parent="Bases"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -12)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, -27)
 script = ExtResource("6_c86hw")
 TeamId = 1
 
@@ -327,7 +327,7 @@ font_size = 44
 modulate = Color(1, 0.35, 0.25, 1)
 
 [node name="ControlPoint" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, -2.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.06, 0)
 script = ExtResource("5_yw86i")
 
 [node name="Body" type="MeshInstance3D" parent="ControlPoint"]
