@@ -6,6 +6,8 @@
 [ext_resource type="Script" path="res://scripts/combat/TargetDummy.cs" id="4_hqf8h"]
 [ext_resource type="Script" path="res://scripts/game/ControlPoint.cs" id="5_yw86i"]
 [ext_resource type="Script" path="res://scripts/game/BaseCore.cs" id="6_c86hw"]
+[ext_resource type="PackedScene" path="res://assets/units/kaykit/knight/knight.glb" id="7_f6l8i"]
+[ext_resource type="PackedScene" path="res://assets/units/kaykit/ranger/ranger.glb" id="8_x0uwj"]
 
 [sub_resource type="Environment" id="Environment_rac1j"]
 background_mode = 1
@@ -119,6 +121,8 @@ script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 0
 IsPlayerControlled = true
+UnitModelScene = ExtResource("7_f6l8i")
+UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
 [node name="Body" type="MeshInstance3D" parent="Squads/LancerSquad"]
 mesh = SubResource("CapsuleMesh_fd0wr")
@@ -149,6 +153,8 @@ script = ExtResource("2_j36x3")
 Role = 1
 TeamId = 0
 MoveSpeed = 7.0
+UnitModelScene = ExtResource("8_x0uwj")
+UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
 [node name="Body" type="MeshInstance3D" parent="Squads/ArcherSquad"]
 mesh = SubResource("CapsuleMesh_fd0wr")
@@ -179,6 +185,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.9, 13)
 script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 0
+UnitModelScene = ExtResource("7_f6l8i")
+UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
 [node name="Body" type="MeshInstance3D" parent="Squads/AllyLancer2"]
 mesh = SubResource("CapsuleMesh_fd0wr")
@@ -208,6 +216,8 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -8, 0.9, -16)
 script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 1
+UnitModelScene = ExtResource("7_f6l8i")
+UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
 [node name="Body" type="MeshInstance3D" parent="Squads/EnemyLancer1"]
 mesh = SubResource("CapsuleMesh_fd0wr")
@@ -238,6 +248,8 @@ script = ExtResource("2_j36x3")
 Role = 1
 TeamId = 1
 MoveSpeed = 7.0
+UnitModelScene = ExtResource("8_x0uwj")
+UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
 [node name="Body" type="MeshInstance3D" parent="Squads/EnemyArcher"]
 mesh = SubResource("CapsuleMesh_fd0wr")
@@ -268,6 +280,8 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 8, 0.9, -16)
 script = ExtResource("2_j36x3")
 Role = 0
 TeamId = 1
+UnitModelScene = ExtResource("7_f6l8i")
+UnitModelScale = Vector3(0.72, 0.72, 0.72)
 
 [node name="Body" type="MeshInstance3D" parent="Squads/EnemyLancer2"]
 mesh = SubResource("CapsuleMesh_fd0wr")
