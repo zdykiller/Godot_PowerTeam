@@ -71,6 +71,24 @@ public partial class SquadController : Node3D
     public float BaseAttackRange = 3.0f;
 
     [Export]
+    public float MeleeDamagePerSecond = 4.0f;
+
+    [Export]
+    public float MeleeMoraleDamagePerSecond = 5.5f;
+
+    [Export]
+    public float EngagementRadius = 3.0f;
+
+    [Export]
+    public float EngagedMoveMultiplier = 0.28f;
+
+    [Export]
+    public float DisengageMoveMultiplier = 0.75f;
+
+    [Export]
+    public float DisengageDelay = 0.55f;
+
+    [Export]
     public float MoveSpeed = 8.0f;
 
     [Export]
@@ -165,8 +183,11 @@ public partial class SquadController : Node3D
     private float _health;
     private float _morale;
     private float _regroupTimer;
+    private float _disengageTimer;
     private Vector3 _spawnPosition;
     private Vector3 _homeBasePosition;
+    private Vector3 _engagementDirection = Vector3.Forward;
+    private bool _isEngaged;
     private string _statusText = "Idle";
     private SquadState _state = SquadState.Active;
 
@@ -319,6 +340,23 @@ public partial class SquadController : Node3D
         _homeBasePosition = position;
     }
 
+    public void SetEngagement(SquadController enemy)
+    {
+        _isEngaged = enemy != null && IsAlive;
+        if (!_isEngaged)
+        {
+            _disengageTimer = 0.0f;
+            return;
+        }
+
+        var toEnemy = enemy.GlobalPosition - GlobalPosition;
+        toEnemy.Y = 0.0f;
+        if (toEnemy.LengthSquared() > 0.001f)
+        {
+            _engagementDirection = toEnemy.Normalized();
+        }
+    }
+
     public bool ApplyDamage(float damage, float moraleDamage)
     {
         if (!IsAlive)
@@ -370,6 +408,7 @@ public partial class SquadController : Node3D
     {
         var moveIntent = active ? command : Vector2.Zero;
         var desiredVelocity = ToWorld(moveIntent) * MoveSpeed * moveIntent.Length();
+        desiredVelocity = ApplyEngagementDrag(delta, desiredVelocity);
         _velocity = _velocity.MoveToward(desiredVelocity, Acceleration * delta);
 
         var speed = _velocity.Length();
@@ -396,12 +435,12 @@ public partial class SquadController : Node3D
         else if (speed > 0.5f)
         {
             _chargePower = Mathf.Max(0.0f, _chargePower - delta * 0.25f);
-            _statusText = "Advancing";
+            _statusText = _isEngaged ? "Locked" : "Advancing";
         }
         else
         {
             _chargePower = Mathf.Max(0.0f, _chargePower - delta * 0.8f);
-            _statusText = "Recovering";
+            _statusText = _isEngaged ? "Holding Line" : "Recovering";
         }
     }
 
@@ -414,16 +453,17 @@ public partial class SquadController : Node3D
         {
             var travel = Mathf.InverseLerp(ArcherRelocateThreshold, 1.0f, strength);
             var desiredVelocity = direction * MoveSpeed * 0.45f * travel;
+            desiredVelocity = ApplyEngagementDrag(delta, desiredVelocity);
             _velocity = _velocity.MoveToward(desiredVelocity, Acceleration * delta);
             _formationIntent = Mathf.MoveToward(_formationIntent, 0.0f, delta * 5.0f);
             FaceDirection(direction, delta);
             _aimFocus = Mathf.Max(0.0f, _aimFocus - delta * 1.5f);
-            _statusText = "Repositioning";
+            _statusText = _isEngaged ? "Disengaging" : "Repositioning";
             _volleyCooldown = Mathf.Min(VolleyInterval, _volleyCooldown + delta * 0.5f);
             return;
         }
 
-        _velocity = _velocity.MoveToward(Vector3.Zero, Acceleration * delta);
+        _velocity = _velocity.MoveToward(ApplyEngagementDrag(delta, Vector3.Zero), Acceleration * delta);
 
         if (active && strength > 0.15f)
         {
@@ -447,12 +487,37 @@ public partial class SquadController : Node3D
         _aimFocus = Mathf.Max(0.0f, _aimFocus - delta);
         _formationIntent = Mathf.MoveToward(_formationIntent, 0.15f, delta * 2.5f);
         _volleyCooldown = Mathf.Min(VolleyInterval, _volleyCooldown + delta * 0.4f);
-        _statusText = "Holding";
+        _statusText = _isEngaged ? "Pinned" : "Holding";
     }
 
     private Vector3 ToWorld(Vector2 command)
     {
         return new Vector3(command.X, 0.0f, command.Y);
+    }
+
+    private Vector3 ApplyEngagementDrag(float delta, Vector3 desiredVelocity)
+    {
+        if (!_isEngaged || desiredVelocity.LengthSquared() <= 0.01f)
+        {
+            _disengageTimer = Mathf.Max(0.0f, _disengageTimer - delta * 1.5f);
+            return _isEngaged ? desiredVelocity * EngagedMoveMultiplier : desiredVelocity;
+        }
+
+        var isPullingAway = desiredVelocity.Normalized().Dot(-_engagementDirection) > 0.45f;
+        if (isPullingAway)
+        {
+            _disengageTimer = Mathf.Min(DisengageDelay, _disengageTimer + delta);
+        }
+        else
+        {
+            _disengageTimer = Mathf.Max(0.0f, _disengageTimer - delta * 2.0f);
+        }
+
+        var ratio = DisengageDelay <= 0.0f ? 1.0f : _disengageTimer / DisengageDelay;
+        var multiplier = isPullingAway
+            ? Mathf.Lerp(EngagedMoveMultiplier, DisengageMoveMultiplier, ratio)
+            : EngagedMoveMultiplier;
+        return desiredVelocity * multiplier;
     }
 
     private void BuildVisualUnits()

@@ -66,6 +66,8 @@ public partial class GameRoot : Node3D
             return;
         }
 
+        UpdateEngagements();
+
         foreach (var squad in _squads)
         {
             var command = Vector2.Zero;
@@ -94,6 +96,7 @@ public partial class GameRoot : Node3D
             }
         }
 
+        ResolveEngagementAttrition((float)delta);
         ResolveBaseAttacks((float)delta);
         CheckVictory();
         UpdateHud();
@@ -247,6 +250,62 @@ public partial class GameRoot : Node3D
             if (distance <= squad.BaseAttackRange + enemyBase.Radius)
             {
                 DamageBase(enemyBase, squad.BaseAttackDamagePerSecond * delta, squad.Name);
+            }
+        }
+    }
+
+    private void UpdateEngagements()
+    {
+        foreach (var squad in _squads)
+        {
+            if (!squad.IsAlive)
+            {
+                squad.SetEngagement(null);
+                continue;
+            }
+
+            squad.SetEngagement(FindNearestEnemySquad(squad, squad.EngagementRadius));
+        }
+    }
+
+    private void ResolveEngagementAttrition(float delta)
+    {
+        for (var i = 0; i < _squads.Length; i++)
+        {
+            var a = _squads[i];
+            if (!a.IsAlive)
+            {
+                continue;
+            }
+
+            for (var j = i + 1; j < _squads.Length; j++)
+            {
+                var b = _squads[j];
+                if (!b.IsAlive || a.TeamId == b.TeamId)
+                {
+                    continue;
+                }
+
+                var distance = FlatDistance(a.GlobalPosition, b.GlobalPosition);
+                if (distance > Mathf.Max(a.EngagementRadius, b.EngagementRadius))
+                {
+                    continue;
+                }
+
+                var bDefeated = b.ApplyDamage(a.MeleeDamagePerSecond * delta, a.MeleeMoraleDamagePerSecond * delta);
+                var aDefeated = a.ApplyDamage(b.MeleeDamagePerSecond * delta, b.MeleeMoraleDamagePerSecond * delta);
+
+                if (bDefeated)
+                {
+                    DamageBase(GetBase(b.TeamId), b.BaseDamageOnDefeat, b.Name);
+                    _combatText = $"{a.Name} routed {b.Name} in melee.";
+                }
+
+                if (aDefeated)
+                {
+                    DamageBase(GetBase(a.TeamId), a.BaseDamageOnDefeat, a.Name);
+                    _combatText = $"{b.Name} routed {a.Name} in melee.";
+                }
             }
         }
     }
