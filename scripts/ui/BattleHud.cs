@@ -22,13 +22,18 @@ public partial class BattleHud : CanvasLayer
     public event Action<AllyTactic> TacticSelected;
     public event Action<BattleSkill> SkillSelected;
     public event Action StartRequested;
-    public event Action RestartRequested;
+    public event Action<int> LevelSelected;
+    public event Action<string> UpgradeRequested;
+    public event Action CampRequested;
 
     private readonly Dictionary<AllyTactic, Button> _tacticButtons = [];
     private readonly Dictionary<BattleSkill, Button> _skillButtons = [];
     private Control _hudRoot;
     private Label _statusLabel;
     private CenterContainer _startOverlay;
+    private Label _menuTitle;
+    private Label _menuBody;
+    private VBoxContainer _menuActions;
     private PanelContainer _selectedSkillPanel;
     private Label _selectedSkillTitle;
     private CenterContainer _resultOverlay;
@@ -42,7 +47,7 @@ public partial class BattleHud : CanvasLayer
         BuildSelectedSkillPanel();
         BuildResultPanel();
         SetTactic(AllyTactic.Assault);
-        ShowStartMenu();
+        ShowBattleHud();
     }
 
     public void SetStatusLines(IEnumerable<string> lines)
@@ -77,6 +82,65 @@ public partial class BattleHud : CanvasLayer
         {
             _selectedSkillPanel.Visible = false;
         }
+
+        if (_resultOverlay != null)
+        {
+            _resultOverlay.Visible = false;
+        }
+    }
+
+    public void ShowCamp(
+        int gold,
+        int unlockedLevel,
+        int lancerUpgrade,
+        int archerUpgrade,
+        int commandUpgrade,
+        IReadOnlyList<string> levelNames,
+        IReadOnlyList<string> levelBriefings
+    )
+    {
+        ShowStartMenu();
+        PopulateMenu(
+            "WAR CAMP",
+            $"Gold: {gold}\nUpgrade troops, then choose a battle.",
+            menu =>
+            {
+                AddMenuButton(menu, $"Barracks Lv {lancerUpgrade} - Upgrade Lancers ({GetUpgradeCost(lancerUpgrade)}g)", () => UpgradeRequested?.Invoke("lancer"));
+                AddMenuButton(menu, $"Range Lv {archerUpgrade} - Upgrade Archers ({GetUpgradeCost(archerUpgrade)}g)", () => UpgradeRequested?.Invoke("archer"));
+                AddMenuButton(menu, $"Command Tent Lv {commandUpgrade} - Improve Rally ({GetUpgradeCost(commandUpgrade)}g)", () => UpgradeRequested?.Invoke("command"));
+
+                for (var i = 0; i < levelNames.Count; i++)
+                {
+                    var levelIndex = i;
+                    var label = i <= unlockedLevel ? $"Mission {i + 1}: {levelNames[i]}" : $"Locked: {levelNames[i]}";
+                    var button = AddMenuButton(menu, label, () => LevelSelected?.Invoke(levelIndex));
+                    button.Disabled = i > unlockedLevel;
+
+                    var briefing = new Label
+                    {
+                        Text = levelBriefings[i],
+                        AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                        MouseFilter = Control.MouseFilterEnum.Ignore,
+                    };
+                    briefing.AddThemeFontSizeOverride("font_size", 16);
+                    menu.AddChild(briefing);
+                }
+            }
+        );
+    }
+
+    public void ShowDeployment(string levelName, string briefing)
+    {
+        ShowStartMenu();
+        PopulateMenu(
+            "DEPLOYMENT",
+            $"{levelName}\n{briefing}\n\nSelect allied squads and tap inside your half to reposition. Start when ready.",
+            menu =>
+            {
+                AddMenuButton(menu, "Start Battle", () => StartRequested?.Invoke());
+                AddMenuButton(menu, "Return to Camp", () => CampRequested?.Invoke());
+            }
+        );
     }
 
     public void ShowBattleHud()
@@ -89,6 +153,11 @@ public partial class BattleHud : CanvasLayer
         if (_hudRoot != null)
         {
             _hudRoot.Visible = true;
+        }
+
+        if (_resultOverlay != null)
+        {
+            _resultOverlay.Visible = false;
         }
     }
 
@@ -334,7 +403,7 @@ public partial class BattleHud : CanvasLayer
         var panel = new PanelContainer
         {
             Name = "StartPanel",
-            CustomMinimumSize = new Vector2(720.0f, 470.0f),
+            CustomMinimumSize = new Vector2(780.0f, 760.0f),
         };
         ApplyPanelStyle(panel, new Color(0.07f, 0.09f, 0.11f, 0.94f), new Color(0.9f, 0.62f, 0.18f, 0.95f));
         _startOverlay.AddChild(panel);
@@ -350,46 +419,32 @@ public partial class BattleHud : CanvasLayer
         box.AddThemeConstantOverride("separation", 18);
         margin.AddChild(box);
 
-        var title = new Label
+        _menuTitle = new Label
         {
             Text = "POWER TEAM",
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        title.AddThemeFontSizeOverride("font_size", 48);
-        box.AddChild(title);
+        _menuTitle.AddThemeFontSizeOverride("font_size", 48);
+        box.AddChild(_menuTitle);
 
-        var subtitle = new Label
-        {
-            Text = "Top-down squad tactics prototype",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        subtitle.AddThemeFontSizeOverride("font_size", 22);
-        box.AddChild(subtitle);
-
-        var rules = new Label
+        _menuBody = new Label
         {
             Text = "Command three allied squads against three enemy squads.\nSelect a squad, tap ground to move, tap an enemy to attack.\nUse squad skills above the selected unit and destroy the enemy base.",
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
-        rules.AddThemeFontSizeOverride("font_size", 20);
-        box.AddChild(rules);
+        _menuBody.AddThemeFontSizeOverride("font_size", 20);
+        box.AddChild(_menuBody);
 
         var spacer = new Control
         {
-            CustomMinimumSize = new Vector2(1.0f, 18.0f),
+            CustomMinimumSize = new Vector2(1.0f, 8.0f),
         };
         box.AddChild(spacer);
 
-        var startButton = new Button
-        {
-            Text = "Start Battle",
-            CustomMinimumSize = new Vector2(320.0f, 64.0f),
-            FocusMode = Control.FocusModeEnum.None,
-        };
-        startButton.AddThemeFontSizeOverride("font_size", 28);
-        startButton.Pressed += () => StartRequested?.Invoke();
-        box.AddChild(startButton);
+        _menuActions = new VBoxContainer();
+        _menuActions.AddThemeConstantOverride("separation", 10);
+        box.AddChild(_menuActions);
     }
 
     private void BuildSelectedSkillPanel()
@@ -478,13 +533,43 @@ public partial class BattleHud : CanvasLayer
 
         var restartButton = new Button
         {
-            Text = "Restart Battle",
+            Text = "Return to Camp",
             CustomMinimumSize = new Vector2(260.0f, 58.0f),
             FocusMode = Control.FocusModeEnum.None,
         };
         restartButton.AddThemeFontSizeOverride("font_size", 24);
-        restartButton.Pressed += () => RestartRequested?.Invoke();
+        restartButton.Pressed += () => CampRequested?.Invoke();
         box.AddChild(restartButton);
+    }
+
+    private void PopulateMenu(string title, string body, Action<VBoxContainer> addActions)
+    {
+        _menuTitle.Text = title;
+        _menuBody.Text = body;
+        foreach (var child in _menuActions.GetChildren())
+        {
+            child.QueueFree();
+        }
+        addActions?.Invoke(_menuActions);
+    }
+
+    private Button AddMenuButton(VBoxContainer parent, string text, Action pressed)
+    {
+        var button = new Button
+        {
+            Text = text,
+            CustomMinimumSize = new Vector2(430.0f, 46.0f),
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        button.AddThemeFontSizeOverride("font_size", 20);
+        button.Pressed += () => pressed?.Invoke();
+        parent.AddChild(button);
+        return button;
+    }
+
+    private int GetUpgradeCost(int level)
+    {
+        return 100 + level * 90;
     }
 
     private void ApplyPanelStyle(PanelContainer panel, Color background, Color border)

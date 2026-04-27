@@ -13,19 +13,29 @@ public partial class BaseCore : Node3D
 
     private Label3D _label;
     private MeshInstance3D _body;
+    private float _runtimeMaxHealth;
     private float _health;
     private float _flashTimer;
 
     public bool IsAlive => _health > 0.0f;
     public float Health => _health;
-    public float HealthRatio => MaxHealth <= 0.0f ? 0.0f : _health / MaxHealth;
+    public float HealthRatio => _runtimeMaxHealth <= 0.0f ? 0.0f : _health / _runtimeMaxHealth;
     public float Radius => HitRadius;
 
     public override void _Ready()
     {
         _label = GetNodeOrNull<Label3D>("StateLabel");
         _body = GetNodeOrNull<MeshInstance3D>("Body");
-        _health = MaxHealth;
+        _runtimeMaxHealth = MaxHealth;
+        _health = _runtimeMaxHealth;
+        UpdateLabel();
+    }
+
+    public void ResetCore(float maxHealthMultiplier = 1.0f)
+    {
+        _runtimeMaxHealth = MaxHealth * Mathf.Max(0.1f, maxHealthMultiplier);
+        _health = _runtimeMaxHealth;
+        _flashTimer = 0.0f;
         UpdateLabel();
     }
 
@@ -57,7 +67,7 @@ public partial class BaseCore : Node3D
 
     public string GetStatusText()
     {
-        return $"{Name}: {Mathf.CeilToInt(_health)}/{Mathf.CeilToInt(MaxHealth)}";
+        return $"{Name}: {Mathf.CeilToInt(_health)}/{Mathf.CeilToInt(_runtimeMaxHealth)}";
     }
 
     private void UpdateLabel()

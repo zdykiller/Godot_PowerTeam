@@ -1,9 +1,18 @@
 using Godot;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 
 public partial class GameRoot : Node3D
 {
+    private enum FlowState
+    {
+        Camp,
+        Deployment,
+        Battle,
+        Result,
+    }
+
     private enum ManualOrderType
     {
         Move,
@@ -17,6 +26,17 @@ public partial class GameRoot : Node3D
         public SquadController TargetSquad;
     }
 
+    private sealed class LevelConfig
+    {
+        public string Name;
+        public string Briefing;
+        public int Reward;
+        public float EnemyHealthMultiplier;
+        public float EnemyMoraleMultiplier;
+        public float EnemyDamageMultiplier;
+        public float EnemyBaseHealthMultiplier;
+    }
+
     private BattleHud _hud;
     private Camera3D _camera;
     private SquadController[] _squads = [];
@@ -26,8 +46,49 @@ public partial class GameRoot : Node3D
     private SquadController _selectedSquad;
     private readonly List<string> _battleLog = [];
     private readonly Dictionary<SquadController, ManualOrder> _manualOrders = [];
+    private readonly Dictionary<SquadController, Vector3> _initialPositions = [];
+    private readonly LevelConfig[] _levels =
+    [
+        new LevelConfig
+        {
+            Name = "Border Skirmish",
+            Briefing = "A weak enemy screen guards the road. Practice selection, movement, and focus fire.",
+            Reward = 90,
+            EnemyHealthMultiplier = 0.82f,
+            EnemyMoraleMultiplier = 0.9f,
+            EnemyDamageMultiplier = 0.8f,
+            EnemyBaseHealthMultiplier = 0.8f,
+        },
+        new LevelConfig
+        {
+            Name = "Arrow Line",
+            Briefing = "Enemy archers have better morale. Use lancers to disrupt them before they grind you down.",
+            Reward = 130,
+            EnemyHealthMultiplier = 1.0f,
+            EnemyMoraleMultiplier = 1.08f,
+            EnemyDamageMultiplier = 1.0f,
+            EnemyBaseHealthMultiplier = 1.0f,
+        },
+        new LevelConfig
+        {
+            Name = "Redoubt",
+            Briefing = "A tougher field army protects the base. Win through positioning and timely skills.",
+            Reward = 180,
+            EnemyHealthMultiplier = 1.18f,
+            EnemyMoraleMultiplier = 1.18f,
+            EnemyDamageMultiplier = 1.12f,
+            EnemyBaseHealthMultiplier = 1.18f,
+        },
+    ];
     private string _combatText = "Destroy the enemy base.";
-    private string _gameState = "Menu";
+    private FlowState _flowState = FlowState.Camp;
+    private int _gold = 120;
+    private int _unlockedLevel = 0;
+    private int _currentLevelIndex;
+    private int _lancerUpgrade;
+    private int _archerUpgrade;
+    private int _commandUpgrade;
+    private const string SavePath = "user://progress.cfg";
     private float _meleeUiTimer;
     private float _chargeOrderCooldown;
     private float _volleyOrderCooldown;
@@ -103,13 +164,27 @@ public partial class GameRoot : Node3D
     [Export]
     public float ManualMoveStrength = 0.95f;
 
+    [Export]
+    public float DeploymentMinX = -14.0f;
+
+    [Export]
+    public float DeploymentMaxX = 14.0f;
+
+    [Export]
+    public float DeploymentMinZ = 7.0f;
+
+    [Export]
+    public float DeploymentMaxZ = 21.0f;
+
     public override void _Ready()
     {
         _hud = GetNode<BattleHud>("UI");
         _hud.TacticSelected += SetAllyTactic;
         _hud.SkillSelected += TriggerBattleSkill;
         _hud.StartRequested += StartBattle;
-        _hud.RestartRequested += RestartBattle;
+        _hud.LevelSelected += StartDeployment;
+        _hud.UpgradeRequested += BuyUpgrade;
+        _hud.CampRequested += ReturnToCamp;
         _camera = GetViewport().GetCamera3D() ?? GetNodeOrNull<Camera3D>("CameraRig/Camera3D");
 
         _debugRoot = GetNodeOrNull<Node3D>("Debug");
@@ -122,6 +197,7 @@ public partial class GameRoot : Node3D
         _squads = GetNode<Node>("Squads").GetChildren().OfType<SquadController>().ToArray();
         _bases = GetNode<Node>("Bases").GetChildren().OfType<BaseCore>().ToArray();
         _playerSquad = _squads.FirstOrDefault(squad => squad.IsPlayerControlled) ?? _squads.FirstOrDefault(squad => squad.TeamId == 0);
+        LoadProgress();
 
         if (_playerSquad == null || _bases.Length < 2)
         {
@@ -131,17 +207,19 @@ public partial class GameRoot : Node3D
 
         foreach (var squad in _squads)
         {
+            _initialPositions[squad] = squad.GlobalPosition;
             squad.SetHomeBasePosition(GetBase(squad.TeamId)?.GlobalPosition ?? squad.GlobalPosition);
         }
 
         SetSelectedSquad(_playerSquad);
         _hud.SetTactic(_allyTactic);
+        ShowCamp();
         UpdateHud();
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (_gameState != "Battle" || _playerSquad == null)
+        if ((_flowState != FlowState.Battle && _flowState != FlowState.Deployment) || _playerSquad == null)
         {
             return;
         }
@@ -156,7 +234,7 @@ public partial class GameRoot : Node3D
 
     public override void _Process(double delta)
     {
-        if (_playerSquad == null || _gameState != "Battle")
+        if (_playerSquad == null || _flowState != FlowState.Battle)
         {
             UpdateHud();
             return;
@@ -395,7 +473,7 @@ public partial class GameRoot : Node3D
 
     private void TriggerBattleSkill(BattleHud.BattleSkill skill)
     {
-        if (_gameState != "Battle")
+        if (_flowState != FlowState.Battle)
         {
             return;
         }
@@ -757,33 +835,137 @@ public partial class GameRoot : Node3D
 
     private void EndBattle(string result, string summary)
     {
-        if (_gameState != "Battle")
+        if (_flowState != FlowState.Battle)
         {
             return;
         }
 
-        _gameState = result;
+        _flowState = FlowState.Result;
+        if (result == "Victory")
+        {
+            var reward = _levels[_currentLevelIndex].Reward;
+            _gold += reward;
+            _unlockedLevel = Mathf.Min(_levels.Length - 1, Mathf.Max(_unlockedLevel, _currentLevelIndex + 1));
+            SaveProgress();
+            summary = $"{summary}\nReward: +{reward} gold.";
+        }
+
         _combatText = $"{result}: {summary}";
         _hud.ShowResult(result, summary);
     }
 
     private void StartBattle()
     {
-        if (_gameState != "Menu")
+        if (_flowState != FlowState.Deployment)
         {
             return;
         }
 
-        _gameState = "Battle";
+        _flowState = FlowState.Battle;
         _combatText = "Battle started. Select a squad and issue orders.";
         AddBattleEvent("battle: started");
         _hud.ShowBattleHud();
         UpdateHud();
     }
 
-    private void RestartBattle()
+    private void StartDeployment(int levelIndex)
     {
-        GetTree().ReloadCurrentScene();
+        if (levelIndex < 0 || levelIndex >= _levels.Length || levelIndex > _unlockedLevel)
+        {
+            return;
+        }
+
+        _currentLevelIndex = levelIndex;
+        ResetBattleForLevel(_levels[levelIndex]);
+        _flowState = FlowState.Deployment;
+        _combatText = $"Deploy for {_levels[levelIndex].Name}.";
+        _hud.ShowDeployment(_levels[levelIndex].Name, _levels[levelIndex].Briefing);
+        UpdateHud();
+    }
+
+    private void ReturnToCamp()
+    {
+        _flowState = FlowState.Camp;
+        _manualOrders.Clear();
+        _hud.ShowCamp(
+            _gold,
+            _unlockedLevel,
+            _lancerUpgrade,
+            _archerUpgrade,
+            _commandUpgrade,
+            _levels.Select(level => level.Name).ToArray(),
+            _levels.Select(level => level.Briefing).ToArray()
+        );
+        UpdateHud();
+    }
+
+    private void ShowCamp()
+    {
+        ReturnToCamp();
+    }
+
+    private void BuyUpgrade(string upgrade)
+    {
+        var level = upgrade switch
+        {
+            "lancer" => _lancerUpgrade,
+            "archer" => _archerUpgrade,
+            "command" => _commandUpgrade,
+            _ => 0,
+        };
+        var cost = GetUpgradeCost(level);
+        if (_gold < cost)
+        {
+            _combatText = $"Need {cost} gold.";
+            ReturnToCamp();
+            return;
+        }
+
+        _gold -= cost;
+        switch (upgrade)
+        {
+            case "lancer":
+                _lancerUpgrade++;
+                break;
+            case "archer":
+                _archerUpgrade++;
+                break;
+            case "command":
+                _commandUpgrade++;
+                RallyMoraleRestore += 4.0f;
+                RallyOrderCooldown = Mathf.Max(6.0f, RallyOrderCooldown - 0.8f);
+                break;
+        }
+
+        _combatText = $"Upgraded {upgrade}.";
+        SaveProgress();
+        ReturnToCamp();
+    }
+
+    private void LoadProgress()
+    {
+        var config = new ConfigFile();
+        if (config.Load(SavePath) != Error.Ok)
+        {
+            return;
+        }
+
+        _gold = Convert.ToInt32(config.GetValue("progress", "gold", _gold));
+        _unlockedLevel = Mathf.Clamp(Convert.ToInt32(config.GetValue("progress", "unlocked_level", _unlockedLevel)), 0, _levels.Length - 1);
+        _lancerUpgrade = Mathf.Max(0, Convert.ToInt32(config.GetValue("upgrades", "lancer", _lancerUpgrade)));
+        _archerUpgrade = Mathf.Max(0, Convert.ToInt32(config.GetValue("upgrades", "archer", _archerUpgrade)));
+        _commandUpgrade = Mathf.Max(0, Convert.ToInt32(config.GetValue("upgrades", "command", _commandUpgrade)));
+    }
+
+    private void SaveProgress()
+    {
+        var config = new ConfigFile();
+        config.SetValue("progress", "gold", _gold);
+        config.SetValue("progress", "unlocked_level", _unlockedLevel);
+        config.SetValue("upgrades", "lancer", _lancerUpgrade);
+        config.SetValue("upgrades", "archer", _archerUpgrade);
+        config.SetValue("upgrades", "command", _commandUpgrade);
+        config.Save(SavePath);
     }
 
     private void UpdateHud()
@@ -800,7 +982,7 @@ public partial class GameRoot : Node3D
 
         _hud.SetStatusLines(
             [
-                $"STATE: {_gameState}    TACTIC: {_allyTactic}    OBJECTIVE: Destroy enemy base",
+                $"STATE: {_flowState}    MISSION: {_levels[_currentLevelIndex].Name}    TACTIC: {_allyTactic}",
                 $"BASES: {playerBase?.GetStatusText() ?? "PlayerBase missing"}    |    {enemyBase?.GetStatusText() ?? "EnemyBase missing"}",
                 $"SELECTED: {selected.Name}    ORDER: {selectedOrder}",
                 selected.BuildStatusReport(),
@@ -817,7 +999,7 @@ public partial class GameRoot : Node3D
 
     private void UpdateSelectedSkillPanel(SquadController selected)
     {
-        if (_gameState != "Battle" || _camera == null || selected == null || !selected.IsAlive || selected.TeamId != 0)
+        if (_flowState != FlowState.Battle || _camera == null || selected == null || !selected.IsAlive || selected.TeamId != 0)
         {
             _hud.SetSelectedSkillPanel(false, Vector2.Zero, "", false, false, 0.0f, 0.0f, 0.0f);
             return;
@@ -873,6 +1055,17 @@ public partial class GameRoot : Node3D
             return;
         }
 
+        if (_flowState == FlowState.Deployment)
+        {
+            var deployPosition = ClampToDeploymentZone(worldPosition);
+            selected.ResetSquad(deployPosition, GetAllyHealthMultiplier(selected), GetAllyMoraleMultiplier(), GetAllyDamageMultiplier(selected));
+            selected.SetHomeBasePosition(GetBase(selected.TeamId)?.GlobalPosition ?? deployPosition);
+            _combatText = $"{selected.Name}: deployed.";
+            AddBattleEvent($"deploy: {selected.Name}");
+            SpawnEffectPoint(deployPosition + Vector3.Up * 0.1f, 0.2f, new Color(0.25f, 0.85f, 1.0f, 1.0f), 0.8f);
+            return;
+        }
+
         var clickedEnemy = FindClosestSquadAt(worldPosition, squad => squad.TeamId != selected.TeamId && squad.IsAlive);
         if (clickedEnemy != null)
         {
@@ -896,6 +1089,67 @@ public partial class GameRoot : Node3D
         _combatText = $"{selected.Name}: move";
         AddBattleEvent($"command: {selected.Name} move");
         SpawnEffectPoint(worldPosition + Vector3.Up * 0.1f, 0.2f, new Color(0.25f, 0.85f, 1.0f, 1.0f), 0.8f);
+    }
+
+    private void ResetBattleForLevel(LevelConfig level)
+    {
+        _battleLog.Clear();
+        _manualOrders.Clear();
+        _chargeOrderCooldown = 0.0f;
+        _volleyOrderCooldown = 0.0f;
+        _rallyOrderCooldown = 0.0f;
+        _allyTactic = BattleHud.AllyTactic.Assault;
+        _hud.SetTactic(_allyTactic);
+
+        foreach (var squad in _squads)
+        {
+            var position = _initialPositions.TryGetValue(squad, out var initial) ? initial : squad.GlobalPosition;
+            if (squad.TeamId == 0)
+            {
+                squad.ResetSquad(position, GetAllyHealthMultiplier(squad), GetAllyMoraleMultiplier(), GetAllyDamageMultiplier(squad));
+            }
+            else
+            {
+                squad.ResetSquad(position, level.EnemyHealthMultiplier, level.EnemyMoraleMultiplier, level.EnemyDamageMultiplier);
+            }
+            squad.SetHomeBasePosition(GetBase(squad.TeamId)?.GlobalPosition ?? position);
+        }
+
+        foreach (var baseCore in _bases)
+        {
+            baseCore.ResetCore(baseCore.TeamId == 0 ? 1.0f + _commandUpgrade * 0.06f : level.EnemyBaseHealthMultiplier);
+        }
+
+        SetSelectedSquad(_playerSquad);
+        AddBattleEvent($"mission: {level.Name}");
+    }
+
+    private Vector3 ClampToDeploymentZone(Vector3 position)
+    {
+        position.X = Mathf.Clamp(position.X, DeploymentMinX, DeploymentMaxX);
+        position.Z = Mathf.Clamp(position.Z, DeploymentMinZ, DeploymentMaxZ);
+        position.Y = 0.9f;
+        return position;
+    }
+
+    private float GetAllyHealthMultiplier(SquadController squad)
+    {
+        return 1.0f + (squad.Role == SquadController.SquadRole.Lancer ? _lancerUpgrade : _archerUpgrade) * 0.14f;
+    }
+
+    private float GetAllyMoraleMultiplier()
+    {
+        return 1.0f + _commandUpgrade * 0.12f;
+    }
+
+    private float GetAllyDamageMultiplier(SquadController squad)
+    {
+        return 1.0f + (squad.Role == SquadController.SquadRole.Lancer ? _lancerUpgrade : _archerUpgrade) * 0.12f;
+    }
+
+    private int GetUpgradeCost(int level)
+    {
+        return 100 + level * 90;
     }
 
     private bool TryProjectToGround(Vector2 screenPosition, out Vector3 worldPosition)

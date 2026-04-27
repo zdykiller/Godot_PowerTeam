@@ -226,10 +226,16 @@ public partial class SquadController : Node3D
     private float _volleyCooldown;
     private float _lancerCooldown;
     private float _flashTimer;
+    private float _runtimeMaxHealth;
+    private float _runtimeMaxMorale;
     private float _health;
     private float _morale;
     private float _regroupTimer;
     private float _disengageTimer;
+    private float _baseLancerImpactDamage;
+    private float _baseVolleyDamage;
+    private float _baseMeleeDamagePerSecond;
+    private float _baseBaseAttackDamagePerSecond;
     private Vector3 _spawnPosition;
     private Vector3 _homeBasePosition;
     private Vector3 _engagementDirection = Vector3.Forward;
@@ -269,13 +275,55 @@ public partial class SquadController : Node3D
         _unitsRoot = GetNodeOrNull<Node3D>("Units");
         _spawnPosition = GlobalPosition;
         _homeBasePosition = _spawnPosition;
-        _health = MaxHealth;
-        _morale = MaxMorale;
+        _baseLancerImpactDamage = LancerImpactDamage;
+        _baseVolleyDamage = VolleyDamage;
+        _baseMeleeDamagePerSecond = MeleeDamagePerSecond;
+        _baseBaseAttackDamagePerSecond = BaseAttackDamagePerSecond;
+        _runtimeMaxHealth = MaxHealth;
+        _runtimeMaxMorale = MaxMorale;
+        _health = _runtimeMaxHealth;
+        _morale = _runtimeMaxMorale;
         BuildVisualUnits();
         BuildSquadIndicators();
         BuildChargeWarning();
         RefreshVisualFeedback();
         _volleyCooldown = VolleyInterval;
+        UpdateLabel();
+    }
+
+    public void ResetSquad(Vector3 position, float healthMultiplier = 1.0f, float moraleMultiplier = 1.0f, float damageMultiplier = 1.0f)
+    {
+        GlobalPosition = position;
+        _spawnPosition = position;
+        _homeBasePosition = position;
+        _velocity = Vector3.Zero;
+        _chargePower = 0.0f;
+        _aimFocus = 0.0f;
+        _formationIntent = 0.0f;
+        _volleyCooldown = VolleyInterval;
+        _lancerCooldown = 0.0f;
+        _flashTimer = 0.0f;
+        _regroupTimer = 0.0f;
+        _disengageTimer = 0.0f;
+        _state = SquadState.Active;
+        _statusText = "Ready";
+        _runtimeMaxHealth = MaxHealth * Mathf.Max(0.1f, healthMultiplier);
+        _runtimeMaxMorale = MaxMorale * Mathf.Max(0.1f, moraleMultiplier);
+        _health = _runtimeMaxHealth;
+        _morale = _runtimeMaxMorale;
+        LancerImpactDamage = _baseLancerImpactDamage * damageMultiplier;
+        VolleyDamage = _baseVolleyDamage * damageMultiplier;
+        MeleeDamagePerSecond = _baseMeleeDamagePerSecond * damageMultiplier;
+        BaseAttackDamagePerSecond = _baseBaseAttackDamagePerSecond * damageMultiplier;
+        foreach (var impactState in _impactStates)
+        {
+            impactState.Timer = 0.0f;
+            impactState.Duration = 0.0f;
+            impactState.Offset = Vector3.Zero;
+            impactState.RotationDegrees = Vector3.Zero;
+        }
+        UpdateFormation(1.0f);
+        RefreshVisualFeedback();
         UpdateLabel();
     }
 
@@ -369,11 +417,11 @@ public partial class SquadController : Node3D
         builder.Append(" | HP ");
         builder.Append(Mathf.CeilToInt(_health));
         builder.Append("/");
-        builder.Append(Mathf.CeilToInt(MaxHealth));
+        builder.Append(Mathf.CeilToInt(_runtimeMaxHealth));
         builder.Append(" | Morale ");
         builder.Append(Mathf.CeilToInt(_morale));
         builder.Append("/");
-        builder.Append(Mathf.CeilToInt(MaxMorale));
+        builder.Append(Mathf.CeilToInt(_runtimeMaxMorale));
         builder.Append(" | Speed ");
         builder.Append(_velocity.Length().ToString("0.0"));
 
@@ -498,7 +546,7 @@ public partial class SquadController : Node3D
         }
 
         var before = _morale;
-        _morale = Mathf.Min(MaxMorale, _morale + moraleAmount);
+        _morale = Mathf.Min(_runtimeMaxMorale, _morale + moraleAmount);
         _flashTimer = 0.2f;
         _statusText = "Rallied";
         RefreshVisualFeedback();
@@ -559,7 +607,7 @@ public partial class SquadController : Node3D
     {
         if (IsAlive)
         {
-            return $"{Name}: HP {Mathf.CeilToInt(_health)}/{Mathf.CeilToInt(MaxHealth)} M {Mathf.CeilToInt(_morale)}/{Mathf.CeilToInt(MaxMorale)}";
+            return $"{Name}: HP {Mathf.CeilToInt(_health)}/{Mathf.CeilToInt(_runtimeMaxHealth)} M {Mathf.CeilToInt(_morale)}/{Mathf.CeilToInt(_runtimeMaxMorale)}";
         }
 
         if (_state == SquadState.Routed)
@@ -818,7 +866,7 @@ public partial class SquadController : Node3D
             return;
         }
 
-        var healthRatio = MaxHealth <= 0.0f ? 0.0f : Mathf.Clamp(_health / MaxHealth, 0.0f, 1.0f);
+        var healthRatio = _runtimeMaxHealth <= 0.0f ? 0.0f : Mathf.Clamp(_health / _runtimeMaxHealth, 0.0f, 1.0f);
         var visibleCount = Mathf.CeilToInt(_unitNodes.Count * healthRatio);
 
         if (_state == SquadState.Routed || _state == SquadState.Regrouping)
@@ -843,8 +891,8 @@ public partial class SquadController : Node3D
             return;
         }
 
-        var healthRatio = MaxHealth <= 0.0f ? 0.0f : Mathf.Clamp(_health / MaxHealth, 0.0f, 1.0f);
-        var moraleRatio = MaxMorale <= 0.0f ? 0.0f : Mathf.Clamp(_morale / MaxMorale, 0.0f, 1.0f);
+        var healthRatio = _runtimeMaxHealth <= 0.0f ? 0.0f : Mathf.Clamp(_health / _runtimeMaxHealth, 0.0f, 1.0f);
+        var moraleRatio = _runtimeMaxMorale <= 0.0f ? 0.0f : Mathf.Clamp(_morale / _runtimeMaxMorale, 0.0f, 1.0f);
         var selectedPulse = IsSelected ? 1.12f : 1.0f;
 
         _teamDisc.Scale = new Vector3(selectedPulse, 1.0f, selectedPulse);
